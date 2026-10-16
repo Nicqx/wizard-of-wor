@@ -23,7 +23,7 @@ fi
 bytes="$(stat -c %s "$GAME_FILE")"
 case "$bytes" in 174848|175531|196608) ;; *) echo "Unrecognized D64 size: $bytes" >&2; exit 2;; esac
 
-TAG="local-$(git rev-parse --short=12 HEAD)-$(sha256sum Dockerfile requirements.txt server/*.py web/* web/assets/* | sha256sum | cut -c1-12)"
+TAG="local-$(git rev-parse --short=12 HEAD)-$(sha256sum Dockerfile requirements.txt server/*.py web/index.html web/assets/*.css web/assets/*.js | sha256sum | cut -c1-12)"
 IMAGE="wizard-of-wor:${TAG}"
 TEMP="$(mktemp)"
 trap 'rm -f "$TEMP"' EXIT
