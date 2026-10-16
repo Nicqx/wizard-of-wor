@@ -21,7 +21,37 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: wizard-of-wor:ci
+      - name: Smoke-test container readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          Path("/tmp/wizard-ci.d64").write_bytes(bytes(174848))
+          PY
+          chmod 644 /tmp/wizard-ci.d64
+          docker run -d --name wizard-ci --rm \
+            -p 127.0.0.1:8107:8107 \
+            --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
+            wizard-of-wor:ci
+          trap 'docker logs wizard-ci; docker stop wizard-ci >/dev/null' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8107/healthz > /tmp/wizard-health.json; then
+              python3 - <<'PY'
+          import json
+          data = json.load(open('/tmp/wizard-health.json'))
+          assert data['ok'] is True, data
+          assert data['checks'] == {'game_d64': 'ok', 'vice_core': 'ok'}, data
+          print('Container HTTP health and mounted D64/core checks: PASS')
+          PY
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Container HTTP server did not become ready in the smoke-test window' >&2
+          exit 1
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
