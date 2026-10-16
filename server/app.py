@@ -290,6 +290,7 @@ def create_app():
     app.router.add_get("/healthz", health)
     app.router.add_get(PREFIX, index)
     app.router.add_get(PREFIX + "/", index)
+    app.router.add_get(PREFIX + "/{code:[0-9]{5}}", index)
     app.router.add_static(PREFIX + "/assets/", ROOT / "web" / "assets")
     app.router.add_post(PREFIX + "/api/rooms", create_room)
     app.router.add_post(PREFIX + "/api/rooms/{code:[0-9]{5}}/join", join_room)
