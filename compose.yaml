@@ -10,7 +10,12 @@ services:
       MAX_ROOMS: "4"
       GAME_D64: "/games/game.d64"
     volumes:
-      - "./local-roms/game.d64:/games/game.d64:ro"
+      - type: bind
+        source: ./local-roms/game.d64
+        target: /games/game.d64
+        read_only: true
+        bind:
+          create_host_path: false
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001
     security_opt:
