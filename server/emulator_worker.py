@@ -11,6 +11,9 @@ import time
 
 from PIL import Image
 
+# Keep the binary protocol on the original stdout FD. Native VICE printf goes to stderr.
+IPC = os.fdopen(os.dup(sys.stdout.fileno()), "wb", buffering=0)
+
 # Libretro ABI (https://docs.libretro.com/development/cores/developing-cores/)
 ENV = C.CFUNCTYPE(C.c_bool, C.c_uint, C.c_void_p)
 VIDEO = C.CFUNCTYPE(None, C.c_void_p, C.c_uint, C.c_uint, C.c_size_t)
@@ -38,8 +41,7 @@ class Variable(C.Structure):
     _fields_ = [("key", C.c_char_p), ("value", C.c_char_p)]
 
 def pack(kind, data):
-    sys.stdout.buffer.write(kind + struct.pack(">I", len(data)) + data)
-    sys.stdout.buffer.flush()
+    IPC.write(kind + struct.pack(">I", len(data)) + data)
 
 class Emulator:
     def __init__(self):
@@ -66,9 +68,9 @@ class Emulator:
             if cmd in (9, 31):  # GET_SYSTEM_DIRECTORY, GET_SAVE_DIRECTORY
                 C.cast(ptr, C.POINTER(C.c_char_p))[0] = self.system_dir
                 return True
-            if cmd == 10:  # SET_PIXEL_FORMAT; demand XRGB8888
+            if cmd == 10:  # SET_PIXEL_FORMAT; XRGB8888 / RGB565 / 0RGB1555
                 fmt = C.cast(ptr, C.POINTER(C.c_int))[0]
-                if fmt != 1:
+                if fmt not in (0, 1, 2):
                     return False
                 self.pixel_format = int(fmt)
                 return True
@@ -97,12 +99,13 @@ class Emulator:
 
         @VIDEO
         def on_video(ptr, width, height, pitch):
-            if not ptr or not self.want_video or self.pixel_format != 1:
+            if not ptr or not self.want_video:
                 return
             if width < 64 or height < 64 or width > 1024 or height > 1024:
                 return
             raw = C.string_at(ptr, height * pitch)
-            frame = Image.frombytes("RGB", (width, height), raw, "raw", "BGRX", pitch, 1)
+            decoder = {0: "BGR;15", 1: "BGRX", 2: "BGR;16"}[self.pixel_format]
+            frame = Image.frombytes("RGB", (width, height), raw, "raw", decoder, pitch, 1)
             out = io.BytesIO()
             frame.save(out, format="JPEG", quality=76, subsampling=0)
             self.video = out.getvalue()
@@ -213,6 +216,7 @@ class Emulator:
 
 if __name__ == "__main__":
     try:
+        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
         Emulator().run()
     except Exception as exc:
         print("Emulator error: " + repr(exc), file=sys.stderr, flush=True)
