@@ -13,6 +13,8 @@ spec:
     metadata:
       labels: {app: wizard-of-wor}
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: nuc
       automountServiceAccountToken: false
       securityContext:
         runAsUser: 10001
