@@ -97,3 +97,19 @@ A session maximum egy óra, mindkét játékos távozása után 5 perc inaktivit
 ## Licenc / upstream
 
 Emulációs core: [libretro/vice-libretro](https://github.com/libretro/vice-libretro), a VICE és a Libretro licencei szerint. A játék eredeti eszközei és jogai nem tartoznak ide. A projekt saját részei GPL-3.0-or-later licenccel készülnek, hogy az emulációs komponens licencével kompatibilisek legyenek.
+
+## Hibaelhárítás – HEALTHCHECK 503
+
+A szolgáltatás HTTP-szervere **futhat** akkor is, ha a telepített játékkép hiányzik. A `/healthz` válasz `checks.game_d64` és `checks.vice_core` mezői jelzik, melyik komponens hibás. Például `"game_d64":"missing"` esetén nincs vagy nem fájl a csatolt `/games/game.d64`. Ha `"invalid_size"`, a fájl nem ismert D64-méretű. **A healthz zöld állapota még nem bizonyítja, hogy a játék ténylegesen betöltődött.**
+
+Ellenőrzés a NUC-on:
+
+```bash
+cd ~/codes/wizard-of-wor
+ls -ld local-roms/game.d64
+file local-roms/game.d64
+docker compose exec wizard-of-wor ls -l /games/game.d64 /opt/vice/vice_x64_libretro.so
+curl -i http://127.0.0.1:8107/healthz
+```
+
+Ha a `local-roms/game.d64` könyvtár (korábbi rövid Docker-volume szintaxis automatikusan létrehozhatta), **csak akkor** töröld `rmdir local-roms/game.d64` paranccsal, ha üres. Ez nem töröl valódi lemezképet. Másold oda a saját `.d64` fájlodat, majd `docker compose up -d --force-recreate`. Az új Compose konfiguráció `create_host_path: false` beállítással már nem hoz létre látszólagos fájlt hiányzó csatoláskor.
