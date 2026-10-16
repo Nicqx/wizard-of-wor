@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#080c20">
+  <title>Wizard of Wor — Játékszoba</title>
+  <link rel="stylesheet" href="/wizard-of-wor/assets/style.css">
+  <script src="/wizard-of-wor/assets/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <a class="back" href="/">← Játékszoba</a>
+      <h1>WIZARD <span>OF WOR</span></h1>
+      <p>Eredeti C64 játékmenet · egy vagy két játékos · központi szerver</p>
+    </header>
+    <section class="lobby" id="lobby">
+      <div class="action"><h2>Új játék</h2><p>Indíts egyedül, vagy hívd meg a második játékost.</p>
+        <button id="create">Játék indítása</button>
+      </div>
+      <form id="joinForm" class="action">
+        <h2>Csatlakozás</h2><label for="roomCode">Ötjegyű szobakód</label>
+        <input id="roomCode" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="12345" required autocomplete="off">
+        <button type="submit">Belépés 2. játékosként</button>
+      </form>
+    </section>
+    <section class="game hidden" id="game" aria-label="Játéktér">
+      <div class="bar">
+        <div><strong>Szoba: <span id="code"></span></strong><span id="role">1. játékos</span></div>
+        <div class="barButtons">
+          <button id="invite" class="secondary">Meghívó másolása</button>
+          <button id="mute" class="secondary">Hang: BE</button>
+          <button id="fullscreen" class="secondary">Teljes képernyő</button>
+          <button id="leave" class="secondary">Kilépés</button>
+        </div>
+      </div>
+      <div class="screen-wrap">
+        <canvas id="screen" width="384" height="272" aria-label="Commodore 64 képernyő"></canvas>
+      </div>
+      <div class="controls" aria-label="Virtuális joystick">
+        <button id="fire" class="fire" aria-label="Tűz">TŰZ</button>
+        <div class="joystick" id="joystick" aria-label="Irányvezérlő">
+          <div class="joystick-ring"></div>
+          <div class="joystick-knob" id="knob"></div>
+          <span class="north">▲</span><span class="south">▼</span>
+          <span class="west">◀</span><span class="east">▶</span>
+        </div>
+      </div>
+      <p class="help">Mobil: bal kézzel tűz, jobbal irányítás · Desktop: nyilak + Space · A kezdéshez a tűzgombot használd.</p>
+      <p id="players" role="status">Kapcsolódás...</p>
+    </section>
+    <p id="status" role="status" aria-live="polite"></p>
+    <footer>A játékot a szerver futtatja. Szakadás esetén a szobakóddal a folyamatban lévő sessionhöz visszatérhetsz ugyanabban a böngészőben.</footer>
+  </main>
+</body>
+</html>
