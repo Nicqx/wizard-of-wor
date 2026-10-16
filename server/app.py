@@ -145,8 +145,17 @@ def error(message, status):
 def get_rooms(request):
     return request.app["rooms"]
 
+def asset_checks():
+    """Return safe diagnostics without exposing local filesystem paths."""
+    game_present = GAME.is_file()
+    game_valid = game_present and GAME.stat().st_size in (174848, 175531, 196608)
+    return {
+        "game_d64": "ok" if game_valid else ("invalid_size" if game_present else "missing"),
+        "vice_core": "ok" if CORE.is_file() else "missing",
+    }
+
 def available():
-    return GAME.is_file() and GAME.stat().st_size in (174848, 175531, 196608) and CORE.is_file()
+    return all(state == "ok" for state in asset_checks().values())
 
 def throttle(request):
     peer = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() if os.environ.get("TRUST_PROXY") == "1" else request.remote
@@ -160,8 +169,12 @@ def throttle(request):
     return True
 
 async def health(request):
-    return web.json_response({"ok": available(), "active_rooms": len(get_rooms(request))},
-                             status=200 if available() else 503)
+    checks = asset_checks()
+    ready = all(state == "ok" for state in checks.values())
+    return web.json_response(
+        {"ok": ready, "active_rooms": len(get_rooms(request)), "checks": checks},
+        status=200 if ready else 503,
+    )
 
 async def create_room(request):
     if not throttle(request):
