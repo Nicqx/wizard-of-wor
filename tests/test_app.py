@@ -105,3 +105,35 @@ async def test_room_media_sender_pumps_binary_and_text_packets():
     task.cancel()
     await asyncio.gather(task,return_exceptions=True)
     assert sent == [("binary",b"Vjpeg"),("text",'{"type":"stats"}')]
+
+
+def test_audio_packets_survive_video_congestion_in_original_order():
+    import asyncio
+    from server.app import Room, MEDIA_QUEUE_LIMIT
+    room = Room("12345", "owner")
+    q = asyncio.Queue(maxsize=MEDIA_QUEUE_LIMIT)
+    for i in range(26):
+        room.queue_media(0, q, (False, b"A" + bytes([i])))
+        room.queue_media(0, q, (False, b"V" + bytes([i])))
+    audio = []
+    while not q.empty():
+        is_text, raw = q.get_nowait()
+        if raw[:1] == b"A":
+            audio.append(raw[1])
+    assert audio == list(range(26)), "Audio samples must never vanish to keep JPEG frames"
+    assert room.media_drop_kinds[0]["audio"] == 0
+    assert room.media_drop_kinds[0]["video"] > 0
+
+
+def test_audio_only_overload_is_bounded_and_reported_separately():
+    import asyncio
+    from server.app import Room, MEDIA_QUEUE_LIMIT
+    room = Room("12345", "owner")
+    q = asyncio.Queue(maxsize=MEDIA_QUEUE_LIMIT)
+    for i in range(MEDIA_QUEUE_LIMIT + 6):
+        room.queue_media(0, q, (False, b"A" + bytes([i])))
+    assert q.qsize() == MEDIA_QUEUE_LIMIT
+    assert room.media_drop_kinds[0]["audio"] == 6
+    assert room.media_drop_kinds[0]["video"] == 0
+    assert room.media_drops[0] == 6
+    assert q.get_nowait()[1] == b"A" + bytes([6])
