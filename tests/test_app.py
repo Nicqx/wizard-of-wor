@@ -67,3 +67,41 @@ def test_asset_checks_diagnostics(tmp_path, monkeypatch):
     game.write_bytes(b"\x00" * 174848)
     core.write_bytes(b"dummy")
     assert mod.asset_checks() == {"game_d64": "ok", "vice_core": "ok"}
+
+
+def test_room_media_queue_drops_old_packets_and_never_blocks():
+    import asyncio
+    from server.app import Room
+    room = Room("12345", "token")
+    queue = asyncio.Queue(maxsize=12)
+    for i in range(100):
+        room.queue_media(0, queue, (False, b"V" + bytes([i])))
+    assert queue.qsize() <= 12
+    assert room.media_drops[0] > 0
+    packets = []
+    while not queue.empty():
+        packets.append(queue.get_nowait())
+    assert packets[-1] == (False, b"V" + bytes([99]))
+    assert packets[0][1] != b"V" + bytes([0])
+
+@pytest.mark.asyncio
+async def test_room_media_sender_pumps_binary_and_text_packets():
+    import asyncio
+    from server.app import Room
+    room = Room("12345", "token")
+    sent = []
+    class FakeWs:
+        closed = False
+        async def send_bytes(self, data): sent.append(("binary", data))
+        async def send_str(self, data): sent.append(("text", data))
+    ws=FakeWs()
+    queue=asyncio.Queue()
+    room.queue_media(0,queue,(False,b"Vjpeg"))
+    room.queue_media(0,queue,(True,'{"type":"stats"}'))
+    task=asyncio.create_task(room.pump_media(0,ws,queue))
+    for _ in range(20):
+        if len(sent) >= 2: break
+        await asyncio.sleep(0.001)
+    task.cancel()
+    await asyncio.gather(task,return_exceptions=True)
+    assert sent == [("binary",b"Vjpeg"),("text",'{"type":"stats"}')]
