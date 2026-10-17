@@ -55,6 +55,19 @@ class Emulator:
         stage("Loading Libretro core")
         self.core = C.CDLL(core_path)
         stage("Libretro core mapped")
+        # The core log interface is a *variadic C function pointer*. It cannot
+        # safely be implemented with CFUNCTYPE, so the callback lives in a
+        # separately compiled C bridge, held alive as long as this worker.
+        bridge_path = os.environ.get(
+            "VICE_LOG_BRIDGE_PATH", "/opt/vice/libretro_log_bridge.so"
+        )
+        self.log_bridge = C.CDLL(bridge_path)
+        self.log_address = C.cast(
+            self.log_bridge.retro_log_bridge, C.c_void_p
+        ).value
+        if not self.log_address:
+            raise RuntimeError("VICE log bridge has no entry point")
+        stage("Libretro native logging bridge ready")
         self.pixel_format = 0
         self.video = None
         self.audio = bytearray()
@@ -70,6 +83,13 @@ class Emulator:
 
         @ENV
         def env(cmd, ptr):
+            if cmd == 27:  # RETRO_ENVIRONMENT_GET_LOG_INTERFACE
+                if not ptr:
+                    return False
+                # retro_log_callback contains exactly one variadic function
+                # pointer. Store the native function address directly.
+                C.cast(ptr, C.POINTER(C.c_void_p))[0] = self.log_address
+                return True
             if cmd in (9, 31):  # GET_SYSTEM_DIRECTORY, GET_SAVE_DIRECTORY
                 C.cast(ptr, C.POINTER(C.c_char_p))[0] = self.system_dir
                 return True
