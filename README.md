@@ -251,3 +251,30 @@ curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
 ```
 
 **A k3s újraindítása a meglévő szobákat törli.** A játékot mindkét módban **új szobából**, a megfelelő játékos tűzgombjával indítsd. Ha a ROM/trainer saját menüje felülírja a standard vezérlést, a játék képernyőjén ellenőrizni kell a tényleges módválasztást. A tesztlemezképes CI önmagában nem tudja ezt a konkrét programváltozatot végigjátszani.
+
+
+## KB6: folyamatos SID-zene távoli WebSocketen (2026-10-17)
+
+A `KB5`-ös változatban 12 csomagos, típusfüggetlen médiapuffer torlódáskor régi audio-adatokat is eldobott. Már egyetlen hiányzó 20 ms-os, 48 kHz-es sztereó PCM-blokk is hiányzó dallamrészt és recsegést okozhatott. A böngésző WebAudio-kódja ezen felül `audioTime`-ot újraindított, ha a lejátszási sor több mint 400 ms-ra nőtt, ami idővonal-átfedést okozhatott.
+
+A **KB6** ezért:
+- Egy játékosonként legfeljebb 32 elemű sort használ. Torlódásnál **először régi JPEG-képkockákat ejt**, a legfrissebb képpel helyettesítve őket. A hangmintákat eredeti sorrendben megőrzi. Csak akkor veszít hangot, ha a kapcsolat már kizárólag hangcsomagokkal is túlterhelt.
+- Külön számlálja a kieső *hang* és *kép* csomagokat; a játék alatti diagnosztikában ezek mellett az audio aláfutások és az aktuális hangpuffer hossza is látható.
+- A böngésző `audio-stream.js` modulja kb. 220–230 ms-os, WAN-jittert elnyelő előtöltést használ. **Nem tekeri vissza** a már ütemezett hang idővonalát, hanem ±2,5% korlátú finom ütemezési korrekciót alkalmaz a kis órajel-eltérésekhez.
+- A WebSocket végponttól végpontig futó konténerteszt a JPEG és az FPS mellett a PCM-blokkokat és azok összes sztereó mintáját is ellenőrzi; a GitHub Actions eredménye 102 PCM-csomag, 97 664 sztereó minta ~2 másodperc alatt.
+- A képtovábbítás, az emulátor verziója, a C64 joystickportok, a mobilos elrendezés és a billentyűzet változatlan.
+
+**Telepítés csak a NUC Wizard-konténerére (a régi szobák megszakadnak):**
+
+```bash
+cd ~/codes/wizard-of-wor
+git fetch origin
+git switch feat/server-c64-mvp
+git pull --ff-only
+bash scripts/update.sh --dry-run
+bash scripts/update.sh --apply
+curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
+# várt: "ui":"KB6"
+```
+
+Ellenőrzés: nyiss új szobát, hallgasd meg a zenét legalább 30–60 másodpercig. A `Mérés másolása` sorában a `hang: 0` szerveroldali audio-vesztés és kevés/nem növekvő `hangkihagyás` a jó jel. Ha a zene továbbra is hiányos, oszd meg a mérés sorát: hangvesztés nélkül a böngésző/hangeszköz pufferét, növekvő `hang` veszteségnél a WAN sávszélességet kell vizsgálni. Az audio továbbra is tömörítetlen 48 kHz sztereó PCM, ~1,54 Mbit/s/játékos, így lassabb uplinkeknél később Opus/WebRTC kodek lehet indokolt.
