@@ -52,6 +52,14 @@ jobs:
           done
           echo 'Container HTTP server did not become ready in the smoke-test window' >&2
           exit 1
+      - name: Smoke-test native VICE worker startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Test-only empty disk (no copyrighted content): validates initialization ABI.
+          docker run --rm \
+            --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
+            wizard-of-wor:ci python -m server.smoke_worker
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
