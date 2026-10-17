@@ -187,6 +187,13 @@ class Room:
         for key in tuple(self.held_keys[role]):
             self.change_key(role, {"key": key, "down": False})
 
+    def active_pad_states(self):
+        """Unconnected clients cannot activate a C64 joystick port."""
+        return [
+            self.input[role] if role in self.sockets else 0
+            for role in (0, 1)
+        ]
+
     async def send_input(self):
         """Sample controllers every 20ms; relay every keyboard transition."""
         try:
@@ -194,12 +201,7 @@ class Room:
                 await asyncio.sleep(0.02)
                 if not self.proc or self.proc.returncode is not None:
                     return
-                # A second pad must stay completely inactive until a
-                # second participant has authenticated over WebSocket.
-                values = [
-                    self.input[role] if role in self.sockets else 0
-                    for role in (0, 1)
-                ]
+                values = self.active_pad_states()
                 events = []
                 for _ in range(min(64, len(self.key_events))):
                     events.append(self.key_events.popleft())
