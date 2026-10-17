@@ -11,6 +11,7 @@ import time
 
 from PIL import Image
 from server.keyboard import KeyboardDriver
+from server.joystick import primary_joyport, c64_port_for_retropad
 
 # Keep the binary protocol on the original stdout FD. Native VICE printf goes to stderr.
 IPC = os.fdopen(os.dup(sys.stdout.fileno()), "wb", buffering=0)
@@ -88,8 +89,18 @@ class Emulator:
         # retro_set_environment. Missing defaults such as
         # vice_sound_sample_rate leave the VICE core at 0 Hz and cause SIGFPE.
         self.core_options = {}
+        # RetroPad 0 is the room owner. Wizard of Wor expects C64
+        # JOYSTICK PORT 1 for one-player mode (port 2 starts two players).
+        # The core routes RetroPad 1 to the other physical port.
+        selected_joyport = os.environ.get("VICE_PRIMARY_JOYPORT", "1")
+        self.primary_joyport = primary_joyport(selected_joyport)
+        stage("Joystick routing: room player 1 -> C64 port %d; "
+              "room player 2 -> C64 port %d" % (
+                  c64_port_for_retropad(0, selected_joyport),
+                  c64_port_for_retropad(1, selected_joyport),
+              ))
         self.option_overrides = {
-            b"vice_joyport": b"2",
+            b"vice_joyport": self.primary_joyport,
             b"vice_autostart": b"enabled",
             b"vice_turbo_fire": b"disabled",
             b"vice_sound_sample_rate": b"48000",
@@ -257,7 +268,11 @@ class Emulator:
 
     def run(self):
         stage(f"Emulation starting: fps={self.fps:.3f}; audio rate={self.samples}")
-        pack(b"M", json.dumps({"sample_rate": self.samples, "fps": self.fps}).encode())
+        pack(b"M", json.dumps({
+            "sample_rate": self.samples,
+            "fps": self.fps,
+            "primary_joyport": int(self.primary_joyport),
+        }).encode())
         interval = 1 / self.fps
         deadline = time.monotonic()
         incoming = bytearray()
