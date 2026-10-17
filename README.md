@@ -135,3 +135,29 @@ bash scripts/update.sh --apply
 ```
 
 Végül töltsd újra a `https://pmqxyz.hopto.org/wizard-of-wor/` oldalt.
+
+## Billentyűzet KB2 – jól látható, önálló panel
+
+A C64-billentyűzet most egy külön `web/assets/c64-keyboard.js` komponens, más C64-játékokhoz is újrahasználható. A játékszoba képernyője felett nagyméretű **⌨ Billentyűzet megnyitása** gomb van; mellette közvetlen RUN/STOP. Telefonon felnyíló, vízszintesen is görgethető panelen, asztali gépen egérrel/kattintással lehet a Commodore 64 billentyűit használni. Bezárás: **✕ Bezárás**, vagy a sötét háttér megnyomása. A játék közben a NUC-on fut tovább. A zárt panel nem változtat a játék nyíl/Space vezérlésén.
+
+A címlapon és a játékszobában megjelenő `C64 UI KB2` marker, továbbá a `/wizard-of-wor/api/version` végpont segít ellenőrizni, hogy valóban az új felület van-e telepítve. A statikus HTML/CSS/JS válaszok már cache-elés nélkül érkeznek, az asset URL-eket `?v=kb2` is védi a régi böngészőcache-től.
+
+**Ha nem látszik a gomb, először a helyi git ágat ellenőrizd** — a csak `git pull` parancs az aktuális branchből frissít, és lehetséges, hogy ez még mindig `main`:
+
+```bash
+cd ~/codes/wizard-of-wor
+git fetch origin
+git switch feat/server-c64-mvp
+git pull --ff-only
+grep -n 'C64 UI KB2' web/index.html
+bash scripts/update.sh --dry-run
+bash scripts/update.sh --apply
+```
+
+A telepítő ellenőrzi a `KB2` forrását az indítás előtt, majd a ténylegesen elindult k3s konténerben is. Frissítéskor az aktív szobák újraindulnak. A távoli ellenőrzés:
+
+```bash
+curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
+```
+
+A válaszban `"ui":"KB2"` jelenik meg, ha a megfelelő verzió fut. Két egymást követő böngészőfrissítésre nincs szükség; az oldal normál újratöltése elegendő.
