@@ -16,6 +16,7 @@ from server.keyboard import key_event
 
 ROOT = Path(__file__).resolve().parent.parent
 PREFIX = "/wizard-of-wor"
+UI_VERSION = "KB2"
 GAME = Path(os.environ.get("GAME_D64", "/games/game.d64"))
 CORE = Path(os.environ.get("VICE_CORE_PATH", "/opt/vice/vice_x64_libretro.so"))
 MAX_ROOMS = int(os.environ.get("MAX_ROOMS", "4"))
@@ -206,11 +207,15 @@ def throttle(request):
     queue.append(now)
     return True
 
+async def version(request):
+    return web.json_response({"ui": UI_VERSION, "keyboard": "bottom-sheet"})
+
+
 async def health(request):
     checks = asset_checks()
     ready = all(state == "ok" for state in checks.values())
     return web.json_response(
-        {"ok": ready, "active_rooms": len(get_rooms(request)), "checks": checks},
+        {"ok": ready, "active_rooms": len(get_rooms(request)), "checks": checks, "ui": UI_VERSION},
         status=200 if ready else 503,
     )
 
@@ -313,7 +318,17 @@ async def ws_room(request):
     return ws
 
 async def index(request):
-    return web.FileResponse(ROOT / "web" / "index.html")
+    return web.FileResponse(ROOT / "web" / "index.html",
+                            headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@web.middleware
+async def no_cache_ui(request, handler):
+    response = await handler(request)
+    # Avoid old JavaScript or style.css surviving deployments on Firefox/mobile.
+    if request.method == "GET" and request.path.startswith(PREFIX + "/assets/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 async def cleanup_loop(app):
     try:
@@ -340,11 +355,12 @@ async def lifespan(app):
         await room.close()
 
 def create_app():
-    app = web.Application(client_max_size=2048)
+    app = web.Application(client_max_size=2048, middlewares=[no_cache_ui])
     app["rooms"] = {}
     app["rate"] = defaultdict(deque)
     app.cleanup_ctx.append(lifespan)
     app.router.add_get("/healthz", health)
+    app.router.add_get(PREFIX + "/api/version", version)
     app.router.add_get(PREFIX, index)
     app.router.add_get(PREFIX + "/", index)
     app.router.add_get(PREFIX + "/{code:[0-9]{5}}", index)
