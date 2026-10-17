@@ -45,6 +45,10 @@ class Room:
     owner: str
     guest: str | None = None
     sockets: dict = field(default_factory=dict)
+    media_queues: dict = field(default_factory=dict)
+    media_tasks: dict = field(default_factory=dict)
+    media_drops: dict = field(default_factory=lambda: {0: 0, 1: 0})
+    emulator_stats: dict = field(default_factory=dict)
     input: dict = field(default_factory=lambda: {0: 0, 1: 0})
     held_keys: dict = field(default_factory=lambda: {0: set(), 1: set()})
     key_events: deque = field(default_factory=deque)
@@ -94,9 +98,22 @@ class Room:
                     self.sample_rate = info.get("sample_rate", 48000)
                     self.ready.set()
                 elif kind in (b"V", b"A"):
-                    for ws in tuple(self.sockets.values()):
-                        if not ws.closed and ws._writer.transport.get_write_buffer_size() < 1_000_000:
-                            await ws.send_bytes(kind + payload)
+                    # Never wait for a slow browser inside the emulator pipe
+                    # reader. Otherwise stdout backpressure freezes retro_run().
+                    packet = (False, kind + payload)
+                    for role, queue in tuple(self.media_queues.items()):
+                        self.queue_media(role, queue, packet)
+                elif kind == b"S":
+                    stats = json.loads(payload)
+                    self.emulator_stats = stats
+                    for role, queue in tuple(self.media_queues.items()):
+                        self.queue_media(role, queue, (True, json.dumps({
+                            "type": "stats", "emulator": stats,
+                            "network": {
+                                "queue": queue.qsize(),
+                                "dropped": self.media_drops[role],
+                            },
+                        })))
         except (asyncio.IncompleteReadError, ConnectionError) as exc:
             # Wait for native worker termination and diagnostic stderr before
             # signaling failure; otherwise close() cancels the log reader.
@@ -120,6 +137,33 @@ class Room:
             self.ready.set()
             for ws in tuple(self.sockets.values()):
                 await ws.close(code=1011, message=b"Emulator stopped")
+
+    def queue_media(self, role, queue, packet):
+        # Keep no more than ~160ms of 50Hz audio + 25Hz JPEG frames.
+        # Drop *old* media if a client falls behind; low-latency game
+        # controls and the emulator itself must never be stalled by WAN.
+        if queue.full():
+            while queue.qsize() > 5:
+                try:
+                    queue.get_nowait()
+                    self.media_drops[role] += 1
+                except asyncio.QueueEmpty:
+                    break
+        try:
+            queue.put_nowait(packet)
+        except asyncio.QueueFull:
+            self.media_drops[role] += 1
+
+    async def pump_media(self, role, ws, queue):
+        try:
+            while not ws.closed:
+                is_text, payload = await queue.get()
+                if is_text:
+                    await ws.send_str(payload)
+                else:
+                    await ws.send_bytes(payload)
+        except (ConnectionError, OSError, RuntimeError, asyncio.CancelledError):
+            return
 
     def change_key(self, role, event):
         """Combine both participants' keys into one C64 keyboard state."""
@@ -165,7 +209,7 @@ class Room:
                 await ws.send_str(msg)
 
     async def close(self):
-        for task in (self.sender, self.reader, self.stderr):
+        for task in (self.sender, self.reader, self.stderr, *self.media_tasks.values()):
             if task:
                 task.cancel()
         for ws in tuple(self.sockets.values()):
@@ -285,6 +329,9 @@ async def ws_room(request):
         if role is None or role in room.sockets:
             return ws
         room.sockets[role] = ws
+        queue = asyncio.Queue(maxsize=12)
+        room.media_queues[role] = queue
+        room.media_tasks[role] = asyncio.create_task(room.pump_media(role, ws, queue))
         room.last_activity = time.monotonic()
         await ws.send_str(json.dumps({"type": "welcome", "role": role,
                                       "sample_rate": room.sample_rate}))
@@ -300,6 +347,10 @@ async def ws_room(request):
                 if type(data) is dict and data.get("type") == "input":
                     room.input[role] = mask(data)
                     room.last_activity = time.monotonic()
+                elif type(data) is dict and data.get("type") == "ping":
+                    ts = data.get("sent")
+                    if type(ts) in (int, float) and 0 <= ts <= 1e12:
+                        await ws.send_str(json.dumps({"type": "pong", "sent": ts}))
                 else:
                     validated = key_event(data)
                     if validated is not None:
@@ -310,6 +361,10 @@ async def ws_room(request):
     finally:
         if role is not None and room.sockets.get(role) is ws:
             room.sockets.pop(role, None)
+            room.media_queues.pop(role, None)
+            sender_task = room.media_tasks.pop(role, None)
+            if sender_task:
+                sender_task.cancel()
             room.input[role] = 0
             room.release_keys(role)
             room.last_activity = time.monotonic()
