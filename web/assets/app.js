@@ -16,7 +16,8 @@ const copyStats = document.getElementById("copyStats");
 const perf = {
   start: performance.now(), windowStart: performance.now(),
   networkBytes: 0, arrived: 0, painted: 0, decodeTotal: 0, decodeCount: 0,
-  lastPaint: 0, rtt: null, worker: null, dropped: 0, queue: 0, report: ""
+  lastPaint: 0, rtt: null, worker: null, dropped: 0, queue: 0, report: "",
+  connection: "nem kapcsolódott"
 };
 function reportPerf(){
   if(!room)return;
@@ -37,7 +38,7 @@ function reportPerf(){
     cause=" | Figyelem: képátvitel vagy megjelenítés lassú";
   if(worker && worker.luma < 10 && worker.changed_frames===0)
     cause+=" | A C64 képe sötét, alig változik";
-  perf.report="C64: "+emulator+" FPS | átvett: "+recvFps.toFixed(1)+" FPS"
+  perf.report="Kapcsolat: "+perf.connection+" | C64: "+emulator+" FPS | átvett: "+recvFps.toFixed(1)+" FPS"
     +" | kirajzolt: "+paintFps.toFixed(1)+" FPS"
     +" | adat: "+netKbps.toFixed(0)+" kbit/s"
     +" | RTT: "+rtt+" | utolsó kép: "+freshness
@@ -152,16 +153,56 @@ async function drawJPEG(payload,id){
     bitmap.close();
   }catch(err){console.warn("Frame decode failed",err);}
 }
+function returnToLobby(reason){
+  // After deployments the old browser tab keeps a token for an in-memory
+  // room that no longer exists. Never leave a permanent black screen.
+  sessionStorage.removeItem("wizard_room");
+  room=null;
+  if(ws){const old=ws;ws=null;old.close();}
+  c64Keyboard.release();c64Keyboard.close();resetControls();
+  game.classList.add("hidden");
+  lobby.classList.remove("hidden");
+  document.getElementById("create").disabled=false;
+  history.replaceState({},"",base+"/");
+  notice(reason);
+}
 function connect(){
-  if(ws)ws.close();
+  if(ws){const old=ws;ws=null;old.close();}
   const scheme=location.protocol==="https:"?"wss:":"ws:";
-  ws=new WebSocket(scheme+"//"+location.host+base+"/api/rooms/"+room.code+"/ws");
-  ws.binaryType="arraybuffer";
-  ws.onopen=()=>ws.send(JSON.stringify({token:room.token}));
-  ws.onmessage=ev=>{
+  let socket;
+  try{
+    socket=new WebSocket(scheme+"//"+location.host+base+"/api/rooms/"+room.code+"/ws");
+  }catch(err){
+    returnToLobby("A WebSocket kapcsolat nem nyitható meg: "+err.message);
+    return;
+  }
+  ws=socket;
+  perf.connection="kapcsolódás...";
+  perfStats.textContent="Kapcsolódás a C64-emulátorhoz...";
+  let welcomed=false;
+  const timer=window.setTimeout(()=>{
+    if(ws===socket&&!welcomed){
+      perf.connection="azonosítási időtúllépés";
+      socket.close();
+    }
+  },9000);
+  socket.binaryType="arraybuffer";
+  socket.onopen=()=>{
+    if(ws!==socket)return;
+    perf.connection="azonosítás...";
+    socket.send(JSON.stringify({token:room.token}));
+  };
+  socket.onmessage=ev=>{
+    if(ws!==socket)return;
     if(typeof ev.data==="string"){
-      const msg=JSON.parse(ev.data);
-      if(msg.type==="welcome"){sourceRate=msg.sample_rate;notice("Csatlakozva. Jó játékot!");}
+      let msg;
+      try{msg=JSON.parse(ev.data);}catch(err){console.warn("Invalid room response",err);return;}
+      if(msg.type==="welcome"){
+        welcomed=true;window.clearTimeout(timer);
+        sourceRate=msg.sample_rate;
+        perf.connection="kapcsolódva";
+        notice("Csatlakozva. Jó játékot!");
+      }
       if(msg.type==="pong" && typeof msg.sent==="number")perf.rtt=performance.now()-msg.sent;
       if(msg.type==="stats"){
         perf.worker=msg.emulator;
@@ -177,11 +218,26 @@ function connect(){
       if(b[0]===65)audio(b.subarray(1));
     }
   };
-  ws.onclose=()=>{resetControls();c64Keyboard.release();c64Keyboard.close();notice("Megszakadt a kapcsolat. Frissítsd az oldalt a visszatéréshez.");};
-  ws.onerror=()=>notice("Hálózati hiba történt.");
+  socket.onclose=ev=>{
+    window.clearTimeout(timer);
+    if(ws!==socket)return;
+    perf.connection="megszakadt (WS "+ev.code+")";
+    resetControls();c64Keyboard.release();c64Keyboard.close();
+    if(!welcomed){
+      returnToLobby("A korábbi szoba vagy a belépési token már nem érvényes (WebSocket "+ev.code+"). Indíts új játékot.");
+    }else{
+      notice("A C64-kapcsolat megszakadt (WebSocket "+ev.code+"). Frissítsd az oldalt vagy lépj ki és indíts új játékot.");
+      perfStats.textContent="Kapcsolat megszakadt: WebSocket "+ev.code+"; több képkocka nem érkezik.";
+    }
+  };
+  socket.onerror=()=>{
+    if(ws!==socket)return;
+    perf.connection="hálózati/upgrade hiba";
+    notice("WebSocket-hálózati hiba; az oldal elérése önmagában még nem jelenti az adatfolyam működését.");
+  };
 }
 function displayRoom(data){
-  room=data;perf.worker=null;perf.lastPaint=0;
+  room=data;perf.worker=null;perf.lastPaint=0;perf.connection="kapcsolódás...";
   perf.windowStart=performance.now();
   sessionStorage.setItem("wizard_room",JSON.stringify(room));
   lobby.classList.add("hidden");game.classList.remove("hidden");
