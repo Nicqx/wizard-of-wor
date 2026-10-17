@@ -21,7 +21,9 @@ async def test_websocket_room_auth_and_media_and_ping():
                 headers={"Origin": origin},
             ) as ws:
                 await ws.send_json({"token": room.owner})
-                assert (await ws.receive_json(timeout=2))["type"] == "welcome"
+                welcome = await ws.receive_json(timeout=2)
+                assert welcome["type"] == "welcome"
+                assert welcome["c64_joystick_port"] == 1
                 assert (await ws.receive_json(timeout=2))["type"] == "players"
                 room.queue_media(0, room.media_queues[0], (False, b"V\xff\xd8fakejpeg"))
                 item = await ws.receive(timeout=2)
@@ -50,7 +52,9 @@ async def test_refresh_replaces_socket_for_same_room_token():
             await old.receive_json(timeout=2)  # players
             new = await client.ws_connect(PREFIX + "/api/rooms/12345/ws")
             await new.send_json({"token": room.owner})
-            assert (await new.receive_json(timeout=3))["type"] == "welcome"
+            welcome = await new.receive_json(timeout=3)
+            assert welcome["type"] == "welcome"
+            assert welcome["c64_joystick_port"] == 1
             assert room.sockets.get(0) is not None
             assert room.input[0] == 0
             await new.close()
@@ -85,3 +89,24 @@ async def test_https_public_origin_allowlist(monkeypatch):
             ) as ws:
                 await ws.send_json({"token": "owner"})
                 assert (await ws.receive_json(timeout=2))["type"] == "welcome"
+
+
+
+@pytest.mark.asyncio
+async def test_guest_auth_enters_c64_port_two_without_affecting_owner():
+    app = create_app()
+    room = Room("12345", "owner", guest="guest")
+    app["rooms"]["12345"] = room
+    async with TestServer(app) as server:
+        async with TestClient(server) as client:
+            async with client.ws_connect(PREFIX + "/api/rooms/12345/ws") as owner:
+                await owner.send_json({"token": "owner"})
+                owner_welcome = await owner.receive_json(timeout=2)
+                assert owner_welcome["c64_joystick_port"] == 1
+                await owner.receive_json(timeout=2)  # players status
+                async with client.ws_connect(PREFIX + "/api/rooms/12345/ws") as guest:
+                    await guest.send_json({"token": "guest"})
+                    guest_welcome = await guest.receive_json(timeout=2)
+                    assert guest_welcome["role"] == 1
+                    assert guest_welcome["c64_joystick_port"] == 2
+                    assert room.active_pad_states() == [0, 0]
