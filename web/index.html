@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080c20">
   <title>Wizard of Wor — Játékszoba</title>
-  <link rel="stylesheet" href="/wizard-of-wor/assets/style.css?v=kb2">
-  <script src="/wizard-of-wor/assets/c64-keyboard.js?v=kb2" defer></script>
-  <script src="/wizard-of-wor/assets/app.js?v=kb2" defer></script>
+  <link rel="stylesheet" href="/wizard-of-wor/assets/style.css?v=kb3">
+  <script src="/wizard-of-wor/assets/c64-keyboard.js?v=kb3" defer></script>
+  <script src="/wizard-of-wor/assets/app.js?v=kb3" defer></script>
 </head>
 <body>
   <main>
@@ -15,7 +15,7 @@
       <a class="back" href="/">← Játékszoba</a>
       <h1>WIZARD <span>OF WOR</span></h1>
       <p>Eredeti C64 játékmenet · egy vagy két játékos · központi szerver</p>
-      <p class="keyboard-intro">⌨ Játék közben a képernyő felett találod a <strong>Billentyűzet megnyitása</strong> gombot. <span>C64 UI KB2</span></p>
+      <p class="keyboard-intro">⌨ Játék közben a képernyő felett találod a <strong>Billentyűzet megnyitása</strong> gombot. <span>C64 UI KB3</span></p>
     </header>
     <section class="lobby" id="lobby">
       <div class="action"><h2>Új játék</h2><p>Indíts egyedül, vagy hívd meg a második játékost.</p>
@@ -39,8 +39,7 @@
       </div>
       <nav class="keyboard-tools" aria-label="C64 vezérlés">
         <button id="keyboardToggle" type="button" class="keyboard-launch" aria-controls="virtualKeyboard" aria-expanded="false">⌨ Billentyűzet megnyitása</button>
-        <button id="runstop" type="button" class="keyboard-shortcut" title="C64 RUN/STOP, PC Escape">RUN/STOP</button>
-        <span class="ui-build" id="uiBuild">C64 UI KB2</span>
+        <span class="ui-build" id="uiBuild">C64 UI KB3</span>
       </nav>
       <div class="screen-wrap">
         <canvas id="screen" width="384" height="272" aria-label="Commodore 64 képernyő"></canvas>
@@ -69,6 +68,10 @@
           <span class="north">▲</span><span class="south">▼</span>
           <span class="west">◀</span><span class="east">▶</span>
         </div>
+      </div>
+      <div class="diagnostics" id="diagnostics" role="status" aria-live="off">
+        <span id="perfStats">Diagnosztika: mérés indul…</span>
+        <button type="button" id="copyStats" class="secondary" title="Másold ki az aktuális FPS-, hálózat- és képernyőadatokat">Mérés másolása</button>
       </div>
       <p class="help">Mobil: bal kézzel tűz, jobbal irányítás · Desktop: nyilak + Space · Billentyűzet gombbal további C64-billentyűk is használhatók.</p>
       <p id="players" role="status">Kapcsolódás...</p>
