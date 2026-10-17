@@ -41,11 +41,141 @@ fire.addEventListener("pointerdown",ev=>{if(firePointer!==null)return;firePointe
 function releaseFire(ev){if(firePointer!==ev.pointerId)return;firePointer=null;controls.fire=false;updateKnob();sendInput();}
 fire.addEventListener("pointerup",releaseFire);fire.addEventListener("pointercancel",releaseFire);
 fire.addEventListener("lostpointercapture",releaseFire);
+
+// Virtual C64 keyboard (not visible during ordinary joystick play).
+// RUN/STOP is RETROK_ESCAPE, not a joystick button.
+const keyboardPanel = document.getElementById("virtualKeyboard");
+const keyboardToggle = document.getElementById("keyboardToggle");
+const keyboardRows = document.getElementById("keyboardRows");
+let keyboardOpen = false;
+const keySources = new Map();
+const keyboardLayout = [
+  ["RUN_STOP","F1","F3","F5","F7","RESTORE","HOME","DEL"],
+  ["1","2","3","4","5","6","7","8","9","0","PLUS","MINUS"],
+  ["CTRL","Q","W","E","R","T","Y","U","I","O","P","AT","ASTERISK"],
+  ["SHIFT_LOCK","A","S","D","F","G","H","J","K","L","COLON","SEMICOLON","RETURN"],
+  ["COMMODORE","SHIFT","Z","X","C","V","B","N","M","COMMA","PERIOD","SLASH","UPARROW"],
+  ["BACKARROW","POUND","SPACE","LEFT","DOWN","UP","RIGHT"],
+];
+const keyLabels = {
+  RUN_STOP:"RUN/STOP", RESTORE:"RESTORE", HOME:"CLR/HOME",
+  DEL:"INST/DEL", RETURN:"RETURN", SHIFT:"SHIFT", SHIFT_LOCK:"SHIFT LOCK",
+  COMMODORE:"C=", CTRL:"CTRL", PLUS:"+", MINUS:"−", ASTERISK:"*",
+  AT:"@", COLON:":", SEMICOLON:";", EQUALS:"=", COMMA:",",
+  PERIOD:".", SLASH:"/", POUND:"£", BACKARROW:"←", UPARROW:"↑",
+  SPACE:"SPACE", LEFT:"◀", RIGHT:"▶", UP:"▲", DOWN:"▼",
+};
+function sendKey(key,down){
+  if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify({type:"key",key,down}));
+  }
+}
+function setKeySource(key,source,down){
+  let sources=keySources.get(key);
+  if(!sources){sources=new Set();keySources.set(key,sources);}
+  const wasDown=sources.size>0;
+  if(down)sources.add(source);
+  else sources.delete(source);
+  const isDown=sources.size>0;
+  if(wasDown!==isDown)sendKey(key,isDown);
+  if(!isDown)keySources.delete(key);
+}
+function releaseKeyboard(){
+  for(const key of keySources.keys())sendKey(key,false);
+  keySources.clear();
+}
+function bindKeyButton(button,key){
+  const source="button-"+key+"-"+Math.random().toString(36).slice(2);
+  let pointer=null;
+  button.addEventListener("pointerdown",ev=>{
+    if(!room||pointer!==null)return;
+    ev.preventDefault();
+    pointer=ev.pointerId;
+    button.setPointerCapture(ev.pointerId);
+    button.classList.add("down");
+    setKeySource(key,source,true);
+  });
+  const release=ev=>{
+    if(pointer!==ev.pointerId)return;
+    pointer=null;
+    button.classList.remove("down");
+    setKeySource(key,source,false);
+  };
+  button.addEventListener("pointerup",release);
+  button.addEventListener("pointercancel",release);
+  button.addEventListener("lostpointercapture",release);
+  // Native keyboard activation generates a click without a pointer event.
+  button.addEventListener("click",ev=>{
+    if(!room||ev.detail!==0)return;
+    setKeySource(key,source,true);
+    window.setTimeout(()=>setKeySource(key,source,false),100);
+  });
+}
+keyboardLayout.forEach(row=>{
+  const line=document.createElement("div");
+  line.className="keyboard-row";
+  for(const key of row){
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="c64-key"+(key==="SPACE"?" wide":"");
+    button.textContent=keyLabels[key]||key;
+    button.setAttribute("aria-label",key==="RUN_STOP"?"Commodore 64 RUN/STOP":button.textContent);
+    bindKeyButton(button,key);
+    line.append(button);
+  }
+  keyboardRows.append(line);
+});
+bindKeyButton(document.getElementById("runstop"),"RUN_STOP");
+function setKeyboardOpen(open){
+  keyboardOpen=open;
+  if(!open)releaseKeyboard();
+  keyboardPanel.classList.toggle("hidden",!open);
+  keyboardToggle.setAttribute("aria-expanded",String(open));
+  keyboardToggle.textContent=open?"⌨ Billentyűzet bezárása":"⌨ Billentyűzet";
+}
+keyboardToggle.addEventListener("click",()=>setKeyboardOpen(!keyboardOpen));
+// Browser KeyboardEvent.code is layout-independent, matching the C64 key
+// positions. The joystick's arrows/Space remain unchanged while the panel is off.
+const physicalC64 = {
+  Escape:"RUN_STOP", Enter:"RETURN", NumpadEnter:"RETURN",
+  Backspace:"DEL", Home:"HOME", PageUp:"RESTORE", Space:"SPACE",
+  ShiftLeft:"SHIFT", ShiftRight:"SHIFT", ControlLeft:"COMMODORE",
+  ArrowUp:"UP", ArrowDown:"DOWN", ArrowLeft:"LEFT", ArrowRight:"RIGHT",
+  F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8",
+  Backquote:"BACKARROW", BracketLeft:"AT", BracketRight:"ASTERISK",
+  Minus:"MINUS", Equal:"PLUS", Semicolon:"SEMICOLON", Quote:"COLON",
+  Comma:"COMMA", Period:"PERIOD", Slash:"SLASH", Backslash:"EQUALS",
+};
+function physicalKey(code){
+  if(/^Key[A-Z]$/.test(code))return code.slice(3);
+  if(/^Digit[0-9]$/.test(code))return code.slice(5);
+  return physicalC64[code]||null;
+}
+
 const keys={ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",Space:"fire"};
-document.addEventListener("keydown",ev=>{if(!room||!keys[ev.code])return;ev.preventDefault();if(!controls[keys[ev.code]]){controls[keys[ev.code]]=true;updateKnob();sendInput();}});
-document.addEventListener("keyup",ev=>{if(!keys[ev.code])return;if(room)ev.preventDefault();controls[keys[ev.code]]=false;updateKnob();sendInput();});
-window.addEventListener("blur",resetControls);
-document.addEventListener("visibilitychange",()=>{if(document.hidden)resetControls();});
+document.addEventListener("keydown",ev=>{
+  if(!room || ev.altKey || ev.metaKey)return;
+  if(ev.target.closest("input,textarea,select,button,a")||ev.target.isContentEditable)return;
+  if(keyboardOpen){
+    const key=physicalKey(ev.code);
+    if(!key)return;
+    ev.preventDefault();
+    if(!ev.repeat)setKeySource(key,"physical-"+ev.code,true);
+    return;
+  }
+  if(!keys[ev.code])return;
+  ev.preventDefault();
+  if(!controls[keys[ev.code]]){controls[keys[ev.code]]=true;updateKnob();sendInput();}
+});
+document.addEventListener("keyup",ev=>{
+  const key=physicalKey(ev.code);
+  if(keySources.has(key))setKeySource(key,"physical-"+ev.code,false);
+  if(keyboardOpen || !keys[ev.code])return;
+  if(room)ev.preventDefault();
+  controls[keys[ev.code]]=false;updateKnob();sendInput();
+});
+window.addEventListener("blur",()=>{resetControls();releaseKeyboard();});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){resetControls();releaseKeyboard();}});
 async function enableSound(){
   if(sound){await sound.resume();return;}
   sound=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"interactive"});
@@ -91,7 +221,7 @@ function connect(){
       if(b[0]===65)audio(b.subarray(1));
     }
   };
-  ws.onclose=()=>{resetControls();notice("Megszakadt a kapcsolat. Frissítsd az oldalt a visszatéréshez.");};
+  ws.onclose=()=>{resetControls();releaseKeyboard();notice("Megszakadt a kapcsolat. Frissítsd az oldalt a visszatéréshez.");};
   ws.onerror=()=>notice("Hálózati hiba történt.");
 }
 function displayRoom(data){
@@ -134,7 +264,7 @@ document.getElementById("fullscreen").addEventListener("click",()=>{
   else document.exitFullscreen();
 });
 document.getElementById("leave").addEventListener("click",()=>{
-  sessionStorage.removeItem("wizard_room");if(ws)ws.close();location.assign(base+"/");
+  releaseKeyboard();sessionStorage.removeItem("wizard_room");if(ws)ws.close();location.assign(base+"/");
 });
 const match=location.pathname.match(/\/([0-9]{5})\/?$/);
 if(match)document.getElementById("roomCode").value=match[1];
