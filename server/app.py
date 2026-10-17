@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
+from server.keyboard import key_event
 
 ROOT = Path(__file__).resolve().parent.parent
 PREFIX = "/wizard-of-wor"
@@ -44,6 +45,8 @@ class Room:
     guest: str | None = None
     sockets: dict = field(default_factory=dict)
     input: dict = field(default_factory=lambda: {0: 0, 1: 0})
+    held_keys: dict = field(default_factory=lambda: {0: set(), 1: set()})
+    key_events: deque = field(default_factory=deque)
     created: float = field(default_factory=time.monotonic)
     last_activity: float = field(default_factory=time.monotonic)
     proc: object = None
@@ -117,15 +120,37 @@ class Room:
             for ws in tuple(self.sockets.values()):
                 await ws.close(code=1011, message=b"Emulator stopped")
 
+    def change_key(self, role, event):
+        """Combine both participants' keys into one C64 keyboard state."""
+        key, down = event["key"], event["down"]
+        before = any(key in pressed for pressed in self.held_keys.values())
+        if down:
+            self.held_keys[role].add(key)
+        else:
+            self.held_keys[role].discard(key)
+        after = any(key in pressed for pressed in self.held_keys.values())
+        if before != after:
+            # Each accepted press and release must be forwarded, even if both
+            # occurred between two of the 20ms controller samples.
+            self.key_events.append({"key": key, "down": after})
+
+    def release_keys(self, role):
+        for key in tuple(self.held_keys[role]):
+            self.change_key(role, {"key": key, "down": False})
+
     async def send_input(self):
-        """Sample both controller states every 20 ms, not every browser event."""
+        """Sample controllers every 20ms; relay every keyboard transition."""
         try:
             while True:
                 await asyncio.sleep(0.02)
                 if not self.proc or self.proc.returncode is not None:
                     return
                 values = [self.input[0], self.input[1]]
-                self.proc.stdin.write((json.dumps(values) + "\n").encode())
+                events = []
+                for _ in range(min(64, len(self.key_events))):
+                    events.append(self.key_events.popleft())
+                packet = {"pads": values, "keys": events}
+                self.proc.stdin.write((json.dumps(packet) + "\n").encode())
                 await self.proc.stdin.drain()
         except (BrokenPipeError, ConnectionError, OSError):
             return
@@ -270,12 +295,18 @@ async def ws_room(request):
                 if type(data) is dict and data.get("type") == "input":
                     room.input[role] = mask(data)
                     room.last_activity = time.monotonic()
+                else:
+                    validated = key_event(data)
+                    if validated is not None:
+                        room.change_key(role, validated)
+                        room.last_activity = time.monotonic()
             elif item.type == WSMsgType.ERROR:
                 break
     finally:
         if role is not None and room.sockets.get(role) is ws:
             room.sockets.pop(role, None)
             room.input[role] = 0
+            room.release_keys(role)
             room.last_activity = time.monotonic()
             await room.broadcast()
         await ws.close()
