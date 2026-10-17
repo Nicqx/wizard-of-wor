@@ -54,7 +54,9 @@
             </div>
             <button id="keyboardClose" class="keyboard-close" type="button" aria-label="Billentyűzet bezárása">✕ Bezárás</button>
           </div>
-          <div id="keyboardRows" class="keyboard-rows" aria-label="Virtuális C64 billentyűk"></div>
+          <div class="keyboard-viewport" role="region" aria-label="Görgethető Commodore-billentyűzet" tabindex="0">
+            <div id="keyboardRows" class="keyboard-rows" aria-label="Virtuális C64 billentyűk"></div>
+          </div>
           <p class="keyboard-hint">A billentyűzet bezárásával a nyílgombok és a Space ismét a joystickot vezérlik. A játék közben tovább fut.</p>
         </section>
       </div>
