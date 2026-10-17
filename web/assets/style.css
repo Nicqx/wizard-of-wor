@@ -78,3 +78,37 @@ button:disabled{opacity:.5;cursor:wait}.hidden{display:none!important}
 .keyboard-intro{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:8px 0;font-size:.86rem;color:#c7d8ff}
 .keyboard-intro strong{color:#f3ca59}
 .keyboard-intro span{font-family:monospace;font-size:.73rem;color:#96b4dc;border:1px solid #5362a0;padding:1px 6px;border-radius:4px}
+
+/* In-game diagnostic data is real measurements, not estimated FPS. */
+.diagnostics{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:8px 0;padding:9px 11px;border:1px solid #4a548b;background:#1b2747;border-radius:8px;font-size:.8rem;color:#c2d9f5;font-family:monospace}
+#perfStats{flex:1 1 250px;line-height:1.5}
+#copyStats{font-family:system-ui;font-size:.78rem}
+@media (max-width:620px) and (orientation:portrait) {
+ .diagnostics{font-size:.7rem;padding:7px}
+}
+/* The C64 canvas is ABOVE the controllers on short landscape screens.
+   Left thumb FIRE, right thumb joystick; no side-column controls. */
+@media (orientation:landscape) and (max-height:580px){
+ body:has(.game:not(.hidden)) header,
+ body:has(.game:not(.hidden)) footer{display:none}
+ body:has(.game:not(.hidden)) main{max-width:100%;padding:3px 8px 6px}
+ .game:not(.hidden){display:flex;flex-direction:column;gap:3px}
+ .game .bar{order:0;display:flex;flex-direction:row;flex-wrap:wrap;gap:3px;margin:0}
+ .game .bar strong{font-size:.87rem}
+ .game .barButtons{gap:3px}
+ .game .barButtons .secondary{font-size:.7rem;padding:5px 7px}
+ .game .keyboard-tools{order:1;display:flex;grid-column:auto;grid-row:auto;margin:0;padding:3px 6px;gap:5px}
+ .game .keyboard-launch{padding:5px 11px;min-height:34px}
+ .game .screen-wrap{order:2;grid-column:auto;grid-row:auto;max-height:none;height:auto;min-height:0;flex:none;width:100%;border-width:2px}
+ .game #screen{width:auto;height:auto;max-width:100%;max-height:calc(100dvh - 185px);object-fit:contain;aspect-ratio:auto}
+ .game .controls{order:3;grid-column:auto;grid-row:auto;display:flex;flex-direction:row;justify-content:space-between;align-items:center;margin:0;padding:0 max(10px,4vw);gap:8px;width:100%;min-height:72px;touch-action:none}
+ .game .fire{order:0;width:68px;height:68px;min-width:68px;min-height:68px;font-size:.85rem;border-width:4px}
+ .game .joystick{order:1;width:85px;height:85px;min-width:85px;min-height:85px}
+ .game .joystick-knob{width:37px;height:37px}
+ .game .joystick-ring{inset:19px}
+ .game .diagnostics{order:4;grid-column:auto;grid-row:auto;padding:4px 7px;margin:0;font-size:.62rem}
+ .game #copyStats{font-size:.64rem;padding:4px 6px}
+ .game #players{order:5;grid-column:auto;grid-row:auto;margin:0;font-size:.63rem}
+ .game .help{display:none}
+ .keyboard-overlay{order:unset}
+}
