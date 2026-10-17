@@ -94,8 +94,21 @@ class Room:
                         if not ws.closed and ws._writer.transport.get_write_buffer_size() < 1_000_000:
                             await ws.send_bytes(kind + payload)
         except (asyncio.IncompleteReadError, ConnectionError) as exc:
-            self.startup_error = "Emulator process ended unexpectedly"
-            log.warning("Room %s ended: %s", self.code, exc)
+            # Wait for native worker termination and diagnostic stderr before
+            # signaling failure; otherwise close() cancels the log reader.
+            return_code = None
+            if self.proc:
+                try:
+                    return_code = await asyncio.wait_for(self.proc.wait(), timeout=2)
+                except asyncio.TimeoutError:
+                    pass
+            if self.stderr:
+                try:
+                    await asyncio.wait_for(asyncio.shield(self.stderr), timeout=1)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+            self.startup_error = f"Emulator process ended unexpectedly (exit={return_code})"
+            log.warning("Room %s ended: %s; exit=%s", self.code, exc, return_code)
         except Exception as exc:
             self.startup_error = str(exc)[:160]
             log.exception("Room %s failed", self.code)
