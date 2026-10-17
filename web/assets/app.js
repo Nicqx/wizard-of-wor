@@ -226,8 +226,9 @@ function connect(){
     if(!welcomed){
       returnToLobby("A korábbi szoba vagy a belépési token már nem érvényes (WebSocket "+ev.code+"). Indíts új játékot.");
     }else{
-      notice("A C64-kapcsolat megszakadt (WebSocket "+ev.code+"). Frissítsd az oldalt vagy lépj ki és indíts új játékot.");
-      perfStats.textContent="Kapcsolat megszakadt: WebSocket "+ev.code+"; több képkocka nem érkezik.";
+      // A disconnected session cannot stream video and should not keep
+      // displaying a black canvas without any available recovery action.
+      returnToLobby("A C64-kapcsolat megszakadt (WebSocket "+ev.code+"). Indíts új játékot.");
     }
   };
   socket.onerror=()=>{
