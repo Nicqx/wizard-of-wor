@@ -15,5 +15,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall -q server tests
       - run: python -m pytest -q
-      - name: Browser JavaScript syntax
-        run: node --check web/assets/app.js
+      - name: Browser JavaScript syntax and C64 keyboard UI smoke
+        run: |
+          node --check web/assets/app.js
+          node --check web/assets/c64-keyboard.js
+          node tests/test_keyboard_ui.js
