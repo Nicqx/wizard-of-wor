@@ -60,6 +60,16 @@ jobs:
           docker run --rm \
             --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
             wizard-of-wor:ci python -m server.smoke_worker
+      - name: Diagnose native VICE crash (CI only)
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --user 0 --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
+            --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
+            wizard-of-wor:ci /bin/sh -c \
+            'apt-get update -qq && apt-get install -y -qq --no-install-recommends gdb >/dev/null && \
+            timeout 20 gdb -batch -q -ex run -ex "thread apply all bt" --args python -m server.emulator_worker'
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
