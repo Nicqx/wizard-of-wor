@@ -40,6 +40,9 @@ class SystemAV(C.Structure):
 class Variable(C.Structure):
     _fields_ = [("key", C.c_char_p), ("value", C.c_char_p)]
 
+def stage(message):
+    print(f"[worker] {message}", file=sys.stderr, flush=True)
+
 def pack(kind, data):
     IPC.write(kind + struct.pack(">I", len(data)) + data)
 
@@ -49,7 +52,9 @@ class Emulator:
         disk = Path(os.environ.get("GAME_D64", "/games/game.d64")).resolve()
         if not disk.is_file():
             raise FileNotFoundError("GAME_D64 is missing")
+        stage("Loading Libretro core")
         self.core = C.CDLL(core_path)
+        stage("Libretro core mapped")
         self.pixel_format = 0
         self.video = None
         self.audio = bytearray()
@@ -159,21 +164,28 @@ class Emulator:
         lib.retro_set_audio_sample_batch(on_batch)
         lib.retro_set_input_poll(on_poll)
         lib.retro_set_input_state(on_input)
+        stage("Calling retro_init")
         lib.retro_init()
+        stage("retro_init returned")
         for port in (0, 1):
             lib.retro_set_controller_port_device(port, 1)
         self.game_path = os.fsencode(str(disk))
         info = GameInfo(self.game_path, None, 0, None)
+        stage("Calling retro_load_game")
         if not lib.retro_load_game(C.byref(info)):
             raise RuntimeError("VICE core did not load disk image")
+        stage("retro_load_game returned")
         av = SystemAV()
+        stage("Calling retro_get_system_av_info")
         lib.retro_get_system_av_info(C.byref(av))
+        stage("retro_get_system_av_info returned")
         self.fps = float(av.timing.fps or 50)
         self.samples = int(av.timing.sample_rate or 48000)
         if not (25 <= self.fps <= 65 and 8000 <= self.samples <= 192000):
             raise RuntimeError("Unsupported AV parameters: %s Hz" % self.samples)
 
     def run(self):
+        stage(f"Emulation starting: fps={self.fps:.3f}; audio rate={self.samples}")
         pack(b"M", json.dumps({"sample_rate": self.samples, "fps": self.fps}).encode())
         interval = 1 / self.fps
         deadline = time.monotonic()
