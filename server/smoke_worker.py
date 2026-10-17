@@ -90,6 +90,21 @@ def main():
         if frames_after_key < 4:
             raise RuntimeError("Emulator stopped rendering after RUN/STOP input")
         print("C64 RUN/STOP short keypress + continued video: PASS", flush=True)
+        stats = None
+        while time.monotonic() < deadline:
+            kind, payload = read_packet(proc, deadline)
+            if kind == b"S":
+                stats = json.loads(payload)
+                break
+        if not stats:
+            raise RuntimeError("No live emulation FPS statistics")
+        if not 1 <= stats["fps"] <= 70:
+            raise RuntimeError(f"Unusable emulator speed: {stats}")
+        if not 35 <= stats["target_fps"] <= 65:
+            raise RuntimeError(f"Invalid target FPS: {stats}")
+        if stats["stream_kbps"] <= 0 or stats["luma"] is None:
+            raise RuntimeError(f"Missing media throughput or luminance: {stats}")
+        print("Live C64 emulation diagnostics: PASS", stats, flush=True)
         return 0
     except Exception as exc:
         print("VICE worker smoke: FAIL:", exc, file=sys.stderr, flush=True)
