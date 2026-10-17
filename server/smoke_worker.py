@@ -72,6 +72,24 @@ def main():
                 break
         if not video_seen:
             raise RuntimeError("No video frames emitted after initializing VICE")
+        # Native callback integration: simulate an extremely short RUN/STOP
+        # press/release in a single controller polling window. The worker must
+        # survive and continue rendering video and audio afterwards.
+        proc.stdin.write(
+            b'{"pads":[0,0],"keys":[{"key":"RUN_STOP","down":true},'
+            b'{"key":"RUN_STOP","down":false}]}\n'
+        )
+        proc.stdin.flush()
+        frames_after_key = 0
+        while time.monotonic() < deadline and frames_after_key < 4:
+            kind, payload = read_packet(proc, deadline)
+            if kind == b"V":
+                if not payload.startswith(b"\xff\xd8"):
+                    raise RuntimeError("Frame damaged after C64 key event")
+                frames_after_key += 1
+        if frames_after_key < 4:
+            raise RuntimeError("Emulator stopped rendering after RUN/STOP input")
+        print("C64 RUN/STOP short keypress + continued video: PASS", flush=True)
         return 0
     except Exception as exc:
         print("VICE worker smoke: FAIL:", exc, file=sys.stderr, flush=True)
