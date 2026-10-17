@@ -225,3 +225,29 @@ kubectl -n default logs deployment/wizard-of-wor --since=5m --tail=120 |
 ```
 
 A publikus tesztnél **új szobát** indíts a `https://pmqxyz.hopto.org/wizard-of-wor/` nyitóoldaláról. Régi, lejárt `/wizard-of-wor/12345` címmel nem lehetséges az előző emulátorhoz visszatérni. A k3s Deployment frissítése megszakítja az aktív szobákat. Ha a helyi `smoke_stream` PASS, de a publikus WebSocket továbbra sem, az ingress/WAN/Origin útvonalat kell vizsgálni; ha a helyi teszt sem PASS, akkor a NUC-emuláció vagy a szerveroldali kapcsolódás hibás.
+
+## KB5: helyes C64 joystickport Wizard of Wor egy- és kétjátékos módban
+
+A Wizard of Wor eredeti C64-kézikönyve szerint **1 játékos = joystick az 1-es fizikai portban; 2 játékos = mindkét port, és a 2-es port FIRE gombja választja ki a kétjátékos módot a kezdőképernyőn**. A korábbi VICE-beállítás tévesen `vice_joyport=2` volt: az első böngészős játékos ezért a C64 **2. játékosának** gombját nyomta, és ezzel a játék kétjátékos módot indított még vendég nélkül is.
+
+Most a `VICE_PRIMARY_JOYPORT=1` beállítást használjuk. A VICE két RetroPad portot így térképez:
+- **Böngészős 1. játékos (szobagazda) → RetroPad 0 → fizikai C64 joystickport 1.** FIRE ebből a portból indítja az egyjátékos módot.
+- **Böngészős 2. játékos (vendég) → RetroPad 1 → fizikai C64 joystickport 2.** A kétjátékos indításhoz a második játékos **a kezdőképernyőn** nyomjon FIRE-t. Futó egyjátékos menetre a második játékos utólagos csatlakozása nem feltétlenül váltja a C64-játék módját.
+- A nem csatlakozott játékos joystickja **minden képkockában 0**; hiába maradt korábbi állapot a szerver memóriájában.
+- A WebSocket `welcome` most `c64_joystick_port` mezőt ad, így a játékos neve mellett a kijelölt port is megjelenik.
+- Más C64-játékhoz a `VICE_PRIMARY_JOYPORT=2` is használható; szigorúan csak `1` vagy `2` elfogadott.
+
+Teszt: `tests/test_joystick.py` ellenőrzi mindkét portrendelést, a vendég nélküli nulla bemenetet és a lecsatlakozást; a `tests/test_websocket.py` ellenőrzi mindkét játékos portját, a Docker `server.smoke_worker` és `server.smoke_stream` pedig az induló VICE-portot és a tényleges WebSocket `welcome` mezőt.
+
+```bash
+cd ~/codes/wizard-of-wor
+git fetch origin
+git switch feat/server-c64-mvp
+git pull --ff-only
+bash scripts/update.sh --dry-run
+bash scripts/update.sh --apply
+curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
+# {"ui":"KB5","keyboard":"bottom-sheet"}
+```
+
+**A k3s újraindítása a meglévő szobákat törli.** A játékot mindkét módban **új szobából**, a megfelelő játékos tűzgombjával indítsd. Ha a ROM/trainer saját menüje felülírja a standard vezérlést, a játék képernyőjén ellenőrizni kell a tényleges módválasztást. A tesztlemezképes CI önmagában nem tudja ezt a konkrét programváltozatot végigjátszani.
