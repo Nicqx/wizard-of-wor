@@ -53,6 +53,10 @@ def main():
             raise RuntimeError("Invalid reported video refresh rate")
         if not 8000 <= int(metadata["sample_rate"]) <= 192000:
             raise RuntimeError("Invalid reported SID sample rate")
+        if metadata.get("primary_joyport") != 1:
+            raise RuntimeError(
+                "Wizard solo must use C64 joystick port 1: %r" % metadata
+            )
         print("VICE worker init: PASS", metadata, flush=True)
         video_seen = False
         audio_seen = False
