@@ -191,3 +191,37 @@ curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
 ```
 
 Az utolsó kérés `{"ui":"KB3","keyboard":"bottom-sheet"}` JSON-t ad, ha az új NUC-verzió fut. Az első játéknál várj a betöltésre, és másold ki a mérést. A `/healthz` még mindig csak az alkalmazás- és fájlhozzáférést mutatja.
+
+## KB4: teljesen üres videó + 0 kbit/s / nincs RTT
+
+A `C64: — FPS | átvett: 0.0 FPS | RTT: —` **nem nulla emulátor-FPS**, hanem WebSocket-adatfolyam hiánya. A KB4 javításai:
+
+- A korábbi, már nem létező memória-szoba `sessionStorage` tokenje többé nem hagy örökre sötét képet. Sikertelen WebSocket-azonosítás vagy kapcsolatvesztés után a lobby jelenik meg, egyértelmű hibával, és új szoba indítható.
+- Ugyanazzal a tokennel a frissen megnyitott WebSocket átveszi a régi kapcsolat helyét (oldalfrissítéskor lehetséges versenyhelyzet).
+- A TLS mögötti Traefik eredeti originjét a konfigurált `PUBLIC_ORIGIN=https://pmqxyz.hopto.org` is engedélyezi, miközben a nem engedélyezett origin marad 403.
+- A diagnosztikai sor tartalmazza a kapcsolat állapotát, megszakadáskor az alacsony szintű WebSocket zárókódot. A szerver naplózza az elfogadott/elutasított socketet, **titkos token nélkül**.
+- CI Docker-integrációs teszt tényleges HTTP POST szobát hoz létre, WebSocketen hitelesít, és ellenőrzi a képkockát, FPS-statisztikát és RTT-t (`server.smoke_stream`).
+
+### Frissítés és elkülönítő vizsgálat a NUC-on
+
+```bash
+cd ~/codes/wizard-of-wor
+git fetch origin
+git switch feat/server-c64-mvp
+git pull --ff-only
+bash scripts/update.sh --dry-run
+bash scripts/update.sh --apply
+
+curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
+# "ui": "KB4" kell
+
+# Valódi NUC-pod, valódi szerver, ideiglenes tesztszoba (jogosult D64):
+kubectl -n default exec deployment/wizard-of-wor -c wizard -- python -m server.smoke_stream
+# Ennek végén: HTTP+WebSocket C64 streaming E2E: PASS
+
+# Ha a publikus útvonalon továbbra sincs kapcsolat:
+kubectl -n default logs deployment/wizard-of-wor --since=5m --tail=120 |
+    grep -Ei 'WebSocket|Room|emulator|error|warning|GET /wizard-of-wor'
+```
+
+A publikus tesztnél **új szobát** indíts a `https://pmqxyz.hopto.org/wizard-of-wor/` nyitóoldaláról. Régi, lejárt `/wizard-of-wor/12345` címmel nem lehetséges az előző emulátorhoz visszatérni. A k3s Deployment frissítése megszakítja az aktív szobákat. Ha a helyi `smoke_stream` PASS, de a publikus WebSocket továbbra sem, az ingress/WAN/Origin útvonalat kell vizsgálni; ha a helyi teszt sem PASS, akkor a NUC-emuláció vagy a szerveroldali kapcsolódás hibás.
