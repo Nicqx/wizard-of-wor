@@ -61,6 +61,7 @@ class Room:
     ready: object = field(default_factory=asyncio.Event)
     startup_error: str | None = None
     sample_rate: int = 48000
+    primary_joyport: int = 1
 
     async def start(self):
         self.proc = await asyncio.create_subprocess_exec(
@@ -96,6 +97,12 @@ class Room:
                 if kind == b"M":
                     info = json.loads(payload)
                     self.sample_rate = info.get("sample_rate", 48000)
+                    primary = info.get("primary_joyport", 1)
+                    if primary not in (1, 2):
+                        raise RuntimeError("Emulator reported an invalid C64 joystick port")
+                    self.primary_joyport = primary
+                    log.info("Room %s controller assignment: browser P1 -> C64 port %d, browser P2 -> C64 port %d",
+                             self.code, primary, 3 - primary)
                     self.ready.set()
                 elif kind in (b"V", b"A"):
                     # Never wait for a slow browser inside the emulator pipe
@@ -360,7 +367,11 @@ async def ws_room(request):
         room.media_tasks[role] = asyncio.create_task(room.pump_media(role, ws, queue))
         room.last_activity = time.monotonic()
         await ws.send_str(json.dumps({"type": "welcome", "role": role,
-                                      "sample_rate": room.sample_rate}))
+                                      "sample_rate": room.sample_rate,
+                                      "c64_joystick_port": (
+                                          room.primary_joyport if role == 0
+                                          else 3 - room.primary_joyport
+                                      )}))
         await room.broadcast()
         async for item in ws:
             if item.type == WSMsgType.TEXT:
