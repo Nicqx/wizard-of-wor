@@ -36,6 +36,7 @@ spec:
           env:
             - {name: PORT, value: "8107"}
             - {name: GAME_D64, value: "/games/game.d64"}
+            - {name: PUBLIC_ORIGIN, value: "https://pmqxyz.hopto.org"}
             - {name: MAX_ROOMS, value: "4"}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
