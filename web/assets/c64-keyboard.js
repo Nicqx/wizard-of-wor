@@ -38,11 +38,10 @@
   window.createC64Keyboard = function createC64Keyboard(options) {
     const root = document.getElementById("virtualKeyboard");
     const toggle = document.getElementById("keyboardToggle");
-    const quick = document.getElementById("runstop");
     const closeButton = document.getElementById("keyboardClose");
     const backdrop = document.getElementById("keyboardBackdrop");
     const keysContainer = document.getElementById("keyboardRows");
-    if (![root,toggle,quick,closeButton,backdrop,keysContainer].every(Boolean)) {
+    if (![root,toggle,closeButton,backdrop,keysContainer].every(Boolean)) {
       throw new Error("Missing C64 keyboard UI element");
     }
     let open = false;
@@ -108,7 +107,6 @@
       }
       keysContainer.append(line);
     });
-    attachButton(quick,"RUN_STOP");
     const setOpen = value => {
       if (open === value) return;
       open = value;
