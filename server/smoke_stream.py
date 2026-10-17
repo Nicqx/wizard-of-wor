@@ -43,6 +43,8 @@ async def main():
                     elif msg.type == aiohttp.WSMsgType.TEXT:
                         payload = json.loads(msg.data)
                         if payload.get("type") == "welcome":
+                            if payload.get("c64_joystick_port") != 1:
+                                raise RuntimeError("Solo player must control C64 port 1")
                             welcomed = True
                         if payload.get("type") == "pong":
                             ping = payload.get("sent") == 1234.5
