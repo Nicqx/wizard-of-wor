@@ -33,6 +33,8 @@ async def main():
                 video = False
                 stats = False
                 ping = False
+                audio_packets = 0
+                audio_samples = 0
                 deadline = time.monotonic() + 12
                 await socket.send_json({"type": "ping", "sent": 1234.5})
                 while time.monotonic() < deadline:
@@ -40,6 +42,11 @@ async def main():
                     if msg.type == aiohttp.WSMsgType.BINARY:
                         if msg.data[:1] == b"V":
                             video = video or msg.data[1:3] == b"\xff\xd8"
+                        elif msg.data[:1] == b"A":
+                            if (len(msg.data) - 1) % 4:
+                                raise RuntimeError("Corrupted stereo PCM framing")
+                            audio_packets += 1
+                            audio_samples += (len(msg.data) - 1) // 4
                     elif msg.type == aiohttp.WSMsgType.TEXT:
                         payload = json.loads(msg.data)
                         if payload.get("type") == "welcome":
@@ -52,10 +59,18 @@ async def main():
                             stats = payload.get("emulator", {}).get("fps", 0) > 1
                     elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                         raise RuntimeError(f"Unexpected WS close: {socket.close_code}")
-                    if welcomed and video and stats and ping:
-                        print("HTTP+WebSocket C64 streaming E2E: PASS (welcome, JPEG, emulator FPS, RTT)")
+                    if welcomed and video and stats and ping and audio_packets >= 40:
+                        if audio_samples < 48000:
+                            raise RuntimeError(
+                                f"SID samples missing or under-produced: {audio_samples}"
+                            )
+                        print(
+                            "HTTP+WebSocket C64 streaming E2E: PASS "
+                            f"(JPEG, {audio_packets} PCM packets, "
+                            f"{audio_samples} stereo samples, FPS, RTT)"
+                        )
                         return
-                raise RuntimeError(f"Incomplete WS stream: welcome={welcomed}, video={video}, stats={stats}, ping={ping}")
+                raise RuntimeError(f"Incomplete WS stream: welcome={welcomed}, video={video}, stats={stats}, ping={ping}, audio_packets={audio_packets}, samples={audio_samples}")
         finally:
             # A separate test room is isolated; idle rooms are GC'd by backend.
             pass
