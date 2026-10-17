@@ -21,12 +21,12 @@ if [[ ! -f "$GAME_FILE" ]]; then
   echo "Place a legally obtained D64 at $GAME_FILE (not in Git)" >&2; exit 2
 fi
 # Fail closed when the local checkout is stale or on the wrong branch.
-if ! grep -q 'C64 UI KB4' web/index.html || [[ ! -f web/assets/c64-keyboard.js ]] || ! grep -q 'perfStats' web/assets/app.js; then
+if ! grep -q 'C64 UI KB5' web/index.html || [[ ! -f web/assets/c64-keyboard.js ]] || ! grep -q 'perfStats' web/assets/app.js; then
   echo "This checkout has an OLD frontend. Update branch feat/server-c64-mvp first:" >&2
   echo "  git fetch origin && git switch feat/server-c64-mvp && git pull --ff-only" >&2
   exit 2
 fi
-echo "Local source: branch=$(git branch --show-current), commit=$(git rev-parse --short HEAD), UI=KB4"
+echo "Local source: branch=$(git branch --show-current), commit=$(git rev-parse --short HEAD), UI=KB5"
 bytes="$(stat -c %s "$GAME_FILE")"
 case "$bytes" in 174848|175531|196608) ;; *) echo "Unrecognized D64 size: $bytes" >&2; exit 2;; esac
 
@@ -59,6 +59,6 @@ docker save "$IMAGE" | sudo k3s ctr -n k8s.io images import -
 "$KUBECTL" -n "$NAMESPACE" apply -f "$TEMP"
 "$KUBECTL" -n "$NAMESPACE" rollout status deployment/wizard-of-wor --timeout=180s
 "$KUBECTL" -n "$NAMESPACE" exec deployment/wizard-of-wor -c wizard -- \
-  python -c 'from server.app import UI_VERSION; from pathlib import Path; assert UI_VERSION == "KB4"; assert "Billentyűzet megnyitása" in Path("/app/web/index.html").read_text(); print("Deployed pod UI: KB4 verified")'
+  python -c 'from server.app import UI_VERSION; from pathlib import Path; assert UI_VERSION == "KB5"; assert "Billentyűzet megnyitása" in Path("/app/web/index.html").read_text(); print("Deployed pod UI: KB5 verified")'
 "$KUBECTL" -n "$NAMESPACE" get deploy,svc -l app=wizard-of-wor
-echo "Installed and verified (KB4). Ingress and landing page were NOT changed."
+echo "Installed and verified (KB5). Ingress and landing page were NOT changed."
