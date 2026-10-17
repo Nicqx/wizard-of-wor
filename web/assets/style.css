@@ -74,3 +74,7 @@ button:disabled{opacity:.5;cursor:wait}.hidden{display:none!important}
  .keyboard-sheet-head p,.keyboard-hint{display:none}
  .c64-key{min-height:37px}
 }
+
+.keyboard-intro{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:8px 0;font-size:.86rem;color:#c7d8ff}
+.keyboard-intro strong{color:#f3ca59}
+.keyboard-intro span{font-family:monospace;font-size:.73rem;color:#96b4dc;border:1px solid #5362a0;padding:1px 6px;border-radius:4px}
