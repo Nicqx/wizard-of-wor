@@ -23,7 +23,7 @@ async def test_http_routes(monkeypatch):
             health_json = await health.json()
             assert health_json["ok"] is False
             assert health_json["checks"]["game_d64"] == "missing"
-            assert health_json["ui"] == "KB2"
+            assert health_json["ui"] == "KB3"
             result = await client.post(PREFIX + "/api/rooms")
             assert result.status == 503
             page = await client.get(PREFIX + "/")
@@ -31,12 +31,12 @@ async def test_http_routes(monkeypatch):
             body = await page.text()
             assert "WIZARD" in body
             assert "Billentyűzet megnyitása" in body
-            assert "C64 UI KB2" in body
+            assert "C64 UI KB3" in body
             assert 'id="keyboardClose"' in body
             assert page.headers["Cache-Control"] == "no-store, max-age=0"
             version = await client.get(PREFIX + "/api/version")
             assert version.status == 200
-            assert (await version.json())["ui"] == "KB2"
+            assert (await version.json())["ui"] == "KB3"
             script = await client.get(PREFIX + "/assets/app.js")
             assert script.status == 200
             assert script.headers["Cache-Control"] == "no-store, max-age=0"
