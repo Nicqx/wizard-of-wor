@@ -48,6 +48,7 @@ jobs:
           assert data['checks'] == {'game_d64': 'ok', 'vice_core': 'ok'}, data
           print('Container HTTP health and mounted D64/core checks: PASS')
           PY
+              docker exec wizard-ci python -m server.smoke_stream
               exit 0
             fi
             sleep 1
