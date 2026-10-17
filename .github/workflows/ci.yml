@@ -15,3 +15,5 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall -q server tests
       - run: python -m pytest -q
+      - name: Browser JavaScript syntax
+        run: node --check web/assets/app.js
