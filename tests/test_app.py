@@ -23,7 +23,7 @@ async def test_http_routes(monkeypatch):
             health_json = await health.json()
             assert health_json["ok"] is False
             assert health_json["checks"]["game_d64"] == "missing"
-            assert health_json["ui"] == "KB5"
+            assert health_json["ui"] == "KB6"
             result = await client.post(PREFIX + "/api/rooms")
             assert result.status == 503
             page = await client.get(PREFIX + "/")
@@ -31,12 +31,12 @@ async def test_http_routes(monkeypatch):
             body = await page.text()
             assert "WIZARD" in body
             assert "Billentyűzet megnyitása" in body
-            assert "C64 UI KB5" in body
+            assert "C64 UI KB6" in body
             assert 'id="keyboardClose"' in body
             assert page.headers["Cache-Control"] == "no-store, max-age=0"
             version = await client.get(PREFIX + "/api/version")
             assert version.status == 200
-            assert (await version.json())["ui"] == "KB5"
+            assert (await version.json())["ui"] == "KB6"
             script = await client.get(PREFIX + "/assets/app.js")
             assert script.status == 200
             assert script.headers["Cache-Control"] == "no-store, max-age=0"
@@ -44,6 +44,10 @@ async def test_http_routes(monkeypatch):
             assert keyboard_js.status == 200
             assert "createC64Keyboard" in await keyboard_js.text()
             assert keyboard_js.headers["Cache-Control"] == "no-store, max-age=0"
+            audio_script = await client.get(PREFIX + "/assets/audio-stream.js")
+            assert audio_script.status == 200
+            assert "createC64Audio" in await audio_script.text()
+            assert audio_script.headers["Cache-Control"] == "no-store, max-age=0"
 
 @pytest.mark.asyncio
 async def test_join_no_room():
