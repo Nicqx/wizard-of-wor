@@ -1,8 +1,7 @@
-"""Integration smoke probe: launch the *real* VICE worker with an existing local D64.
+"""End-to-end smoke: real VICE init + at least one encoded video frame.
 
-Usage inside container: python -m server.smoke_worker
-It checks for the worker's initial media header. It does not redistribute
-game files or claim the game actually started.
+Runs with a locally mounted .d64, or the zero-filled test disk in CI.
+No copyrighted game is included in the public repository.
 """
 import json
 import os
@@ -13,49 +12,69 @@ import sys
 import time
 
 
+def read_exact(proc, n, deadline):
+    data = bytearray()
+    while len(data) < n and time.monotonic() < deadline:
+        ready, _, _ = select.select([proc.stdout], [], [], 0.2)
+        if ready:
+            chunk = os.read(proc.stdout.fileno(), n - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        elif proc.poll() is not None:
+            break
+    if len(data) != n:
+        raise RuntimeError(f"Short worker stream: {len(data)}/{n} bytes")
+    return bytes(data)
+
+
+def read_packet(proc, deadline):
+    header = read_exact(proc, 5, deadline)
+    size = struct.unpack(">I", header[1:])[0]
+    if size < 1 or size > 2_000_000:
+        raise RuntimeError(f"Bad worker packet length {size}")
+    return header[:1], read_exact(proc, size, deadline)
+
+
 def main():
     proc = subprocess.Popen(
         [sys.executable, "-m", "server.emulator_worker"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
-    data = bytearray()
     try:
         deadline = time.monotonic() + 20
-        while len(data) < 5 and time.monotonic() < deadline:
-            r, _, _ = select.select([proc.stdout], [], [], 0.25)
-            if r:
-                chunk = os.read(proc.stdout.fileno(), 5 - len(data))
-                if not chunk:
-                    break
-                data.extend(chunk)
-            elif proc.poll() is not None:
+        kind, payload = read_packet(proc, deadline)
+        if kind != b"M":
+            raise RuntimeError(f"Expected initial metadata, got {kind!r}")
+        metadata = json.loads(payload)
+        if not 25 <= float(metadata["fps"]) <= 65:
+            raise RuntimeError("Invalid reported video refresh rate")
+        if not 8000 <= int(metadata["sample_rate"]) <= 192000:
+            raise RuntimeError("Invalid reported SID sample rate")
+        print("VICE worker init: PASS", metadata, flush=True)
+        video_seen = False
+        audio_seen = False
+        while time.monotonic() < deadline:
+            kind, payload = read_packet(proc, deadline)
+            if kind == b"V":
+                if not payload.startswith(b"\xff\xd8"):
+                    raise RuntimeError("Video packet was not encoded JPEG")
+                video_seen = True
+                print(f"VICE rendered first JPEG frame: PASS ({len(payload)} bytes)", flush=True)
+            if kind == b"A":
+                if len(payload) % 4:
+                    raise RuntimeError("Invalid stereo PCM packet length")
+                audio_seen = True
+            if video_seen and audio_seen:
+                print("VICE emitted original PCM audio samples: PASS", flush=True)
                 break
-        if len(data) != 5:
-            raise RuntimeError(f"No worker media header; got {len(data)} bytes")
-        if data[:1] != b"M":
-            raise RuntimeError(f"Unexpected worker frame type {data[:1]!r}")
-        size = struct.unpack(">I", data[1:])[0]
-        if size <= 0 or size > 4096:
-            raise RuntimeError(f"Invalid worker media header size: {size}")
-        body = bytearray()
-        while len(body) < size and time.monotonic() < deadline:
-            r, _, _ = select.select([proc.stdout], [], [], 0.25)
-            if r:
-                chunk = os.read(proc.stdout.fileno(), size - len(body))
-                if not chunk:
-                    break
-                body.extend(chunk)
-            elif proc.poll() is not None:
-                break
-        if len(body) != size:
-            raise RuntimeError(f"Short media header: {len(body)}/{size}")
-        info = json.loads(body)
-        assert 25 <= float(info["fps"]) <= 65, info
-        assert 8000 <= int(info["sample_rate"]) <= 192000, info
-        print("VICE worker initialization: PASS", info)
+        if not video_seen:
+            raise RuntimeError("No video frames emitted after initializing VICE")
         return 0
     except Exception as exc:
-        print("VICE worker initialization: FAIL:", exc, file=sys.stderr)
+        print("VICE worker smoke: FAIL:", exc, file=sys.stderr, flush=True)
         return 1
     finally:
         if proc.poll() is None:
@@ -65,9 +84,9 @@ def main():
         except subprocess.TimeoutExpired:
             proc.kill()
             _, err = proc.communicate(timeout=4)
-        print(f"Worker returncode: {proc.returncode}", file=sys.stderr)
-        for line in err.decode("utf-8", errors="replace").splitlines()[-60:]:
-            print("worker:", line[:400], file=sys.stderr)
+        print(f"Worker returncode: {proc.returncode}", file=sys.stderr, flush=True)
+        for line in err.decode("utf-8", errors="replace").splitlines()[-65:]:
+            print("worker:", line[:400], file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
