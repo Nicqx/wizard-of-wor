@@ -20,3 +20,4 @@ jobs:
           node --check web/assets/app.js
           node --check web/assets/c64-keyboard.js
           node tests/test_keyboard_ui.js
+          node tests/test_room_recovery.js
