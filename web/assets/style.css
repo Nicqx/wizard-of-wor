@@ -30,27 +30,47 @@ button:disabled{opacity:.5;cursor:wait}.hidden{display:none!important}
 @media(max-width:620px){.lobby{grid-template-columns:1fr}.action{padding:17px}.bar{align-items:flex-start}.bar span{display:block;margin:4px 0}.controls{margin:12px 0}.fire{width:94px;height:94px}.joystick{width:146px;height:146px}.screen-wrap{border-width:3px}}
 @media(orientation:landscape) and (max-height:580px){main{padding:5px 9px}header{margin:0 0 4px}header h1{font-size:1.2rem;margin:4px}header p,.help,footer{display:none}.bar{margin:0 0 3px}.secondary{padding:4px 8px}.game{display:grid;grid-template-columns:minmax(0,1fr) 175px;gap:6px}.bar{grid-column:1/-1}.screen-wrap{max-height:calc(100dvh - 92px)}.controls{grid-column:2;grid-row:2;flex-direction:column-reverse;margin:0;gap:5px}.joystick{width:114px;height:114px}.joystick-knob{width:42px;height:42px}.joystick-ring{inset:20px}.fire{width:67px;height:67px;font-size:.85rem;border-width:4px}#players{grid-column:1/-1;font-size:.75rem;margin:0}#status{margin:0}}
 
-/* Accessible C64 keyboard overlay, hidden by default. Does not displace the
-   classic two-thumb controller when closed. */
-.runstop-quick{background:#7f3561;color:#fff}
-.virtual-keyboard{margin:12px 0;padding:12px;background:#131a3b;border:1px solid #5466a3;border-radius:10px;min-width:0}
-.keyboard-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:9px;font-size:.85rem}
-.keyboard-header strong{color:#f5b847}.keyboard-header span{color:#a9bde7}
-.keyboard-rows{display:flex;flex-direction:column;gap:5px}
+
+/* Keyboard launcher always sits immediately over the active game screen. */
+.keyboard-tools{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:8px 0 12px;padding:9px;background:#121c3c;border:1px solid #455b9e;border-radius:10px}
+.keyboard-launch{background:#efc34b;color:#161527;padding:13px 20px;font-size:1rem;min-height:46px;box-shadow:0 2px 0 #815d1b}
+.keyboard-shortcut{background:#852d63;color:#fff;padding:11px 16px;min-height:46px}
+.ui-build{margin-left:auto;color:#9eb0db;font-size:.75rem;font-family:monospace}
+.keyboard-visible{overflow:hidden}
+.keyboard-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;isolation:isolate}
+.keyboard-backdrop{position:absolute;inset:0;background:rgb(0 0 0 / .77)}
+.keyboard-sheet{position:relative;z-index:1;width:min(1100px,100%);max-height:min(85dvh,730px);overflow-y:auto;background:#182151;border:2px solid #7b8eca;border-radius:20px 20px 0 0;padding:16px 18px 18px;box-shadow:0 -10px 48px #070b21}
+.keyboard-sheet-head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px}
+.keyboard-sheet-head strong{color:#f5c653;font:700 clamp(1rem,2.4vw,1.4rem) monospace}
+.keyboard-sheet-head p{font-size:.83rem;margin:5px 0 0}
+.keyboard-close{background:#9a365c;color:#fff;min-height:44px;white-space:nowrap}
+.keyboard-viewport{overflow-x:auto;max-width:100%;padding-bottom:5px;scrollbar-width:thin;scrollbar-color:#7e91d5 transparent}
+.keyboard-rows{display:flex;flex-direction:column;gap:6px;min-width:730px}
 .keyboard-row{display:flex;justify-content:center;gap:4px;width:100%}
-.c64-key{flex:1 1 0;min-width:0;min-height:39px;padding:4px 2px;font-family:monospace;font-size:clamp(.55rem,1.8vw,.85rem);font-weight:700;white-space:normal;overflow-wrap:anywhere;line-height:1.05;background:#343e79;color:#fff;border:1px solid #7585d4;border-bottom-width:3px;border-radius:4px;touch-action:none;-webkit-user-select:none;user-select:none}
-.c64-key.wide{flex:5 1 0;background:#333866}
-.c64-key.down,.c64-key:active{background:#e6a843;color:#131428;transform:translateY(1px);border-bottom-width:1px}
-.c64-key:focus-visible{outline:2px solid #f9e29b;outline-offset:1px}
+.c64-key{flex:1 1 0;min-width:0;min-height:48px;padding:6px 2px;font-family:monospace;font-size:clamp(.7rem,1.5vw,.88rem);font-weight:700;line-height:1.1;white-space:normal;overflow-wrap:anywhere;touch-action:manipulation;-webkit-user-select:none;user-select:none;background:#3b4e94;color:#fff;border:1px solid #869be4;border-bottom-width:4px;border-radius:6px}
+.c64-key.wide{flex:5 1 0;background:#334075}
+.c64-key.down,.c64-key:active{background:#e8ba50;color:#0e1741;transform:translateY(2px);border-bottom-width:2px}
+.c64-key:focus-visible{outline:3px solid #ffee87;outline-offset:2px}
+.keyboard-hint{font-size:.8rem;margin:12px 0 0;color:#b5c6ee}
 @media(max-width:620px){
-  .virtual-keyboard{padding:6px;margin:7px 0}
-  .keyboard-row{gap:2px}
-  .c64-key{font-size:.55rem;min-height:36px;padding:3px 1px}
-  .keyboard-header{font-size:.69rem}
+ .keyboard-tools{padding:6px;gap:5px}
+ .keyboard-launch{font-size:.88rem;padding:12px}
+ .keyboard-shortcut{font-size:.78rem;padding:11px 8px}
+ .ui-build{flex-basis:100%;text-align:right}
+ .keyboard-sheet{padding:9px 8px 13px;max-height:74dvh;border-radius:12px 12px 0 0}
+ .keyboard-sheet-head p{font-size:.68rem}
+ .keyboard-rows{min-width:700px;gap:5px}
+ .c64-key{min-height:46px;font-size:.73rem}
 }
 @media(orientation:landscape) and (max-height:580px){
-  .virtual-keyboard{grid-column:1/-1;grid-row:3;margin:2px 0;padding:5px;max-height:37dvh;overflow:auto}
-  .keyboard-rows{gap:3px}
-  .c64-key{min-height:29px}
-  #players{grid-row:4}
+ .keyboard-tools{grid-column:1/-1;grid-row:2;margin:0;padding:4px}
+ .keyboard-launch,.keyboard-shortcut{min-height:34px;padding:6px 10px}
+ .ui-build{flex:0;margin-left:auto}
+ .screen-wrap{grid-column:1;grid-row:3;max-height:calc(100dvh - 145px)}
+ .controls{grid-column:2;grid-row:3}
+ #players{grid-column:1/-1;grid-row:4}
+ .keyboard-sheet{width:min(1100px,100%);max-height:92dvh;padding:7px 12px}
+ .keyboard-sheet-head{margin-bottom:5px}
+ .keyboard-sheet-head p,.keyboard-hint{display:none}
+ .c64-key{min-height:37px}
 }
