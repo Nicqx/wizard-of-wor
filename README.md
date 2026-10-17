@@ -161,3 +161,33 @@ curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
 ```
 
 A válaszban `"ui":"KB2"` jelenik meg, ha a megfelelő verzió fut. Két egymást követő böngészőfrissítésre nincs szükség; az oldal normál újratöltése elegendő.
+
+## Teljesítmény és fekete képernyő – KB3 diagnosztika (2026-10-17)
+
+A Worker most **2 másodpercenként valós képkockaszámból mér**: `fps` / `target_fps` (kb. 50 PAL), tényleges JPEG FPS, a teljes médiafolyam bitrátája, processzor-munkaidő becsült aránya, a C64 képének átlagos fényereje (`luma`, 0–255), valamint a 16×16-ra kicsinyített képen észlelt változások száma. A szerver játékosonként **12 elemű, eldobással szabályozott média-sort** használ: WAN akadozásakor a régi kép/hang csomagokat ejti, nem blokkolhatja a VICE stdout feldolgozását. A böngésző a megérkező FPS-t, kirajzolt FPS-t, mért WebSocket adatátvitelt, képdekódolási időt, ping-pong RTT-t és régi képkockák számát mutatja. A **Mérés másolása** gombbal a teljes egy soros diagnosztika kimásolható.
+
+Értelmezés 5–10 másodperccel a játék indítása után:
+
+- **NUC C64 ≈ 50/50 FPS, bejövő ≈ 25 és kirajzolt ≈ 25 FPS**: az emuláció és a képfolyam időzítése jó. Ha a kép mégis sötét, nézd meg a fényerőt és a változások számát; egy 0/255 és 0 változás a valóban sötét/stagnáló *emulált* képet valószínűsíti, nem a WAN eltűnt képkockáit.
+- **NUC C64 jóval 50 alatt**: CPU/VICE betöltési vagy emulációs lassulás a NUC-on; a hálózat önmagában nem magyarázza ezt.
+- **NUC ≈ 50, de beérkezett FPS alacsony vagy eldobott csomagok száma nő**: hálózat/WebSocket útvonal torlódása. **Megérkezett FPS ≈ 25, de kirajzolt FPS alacsony**: böngészős dekódolás/megjelenítés.
+- **RTT** a WebSocket ping-pong oda-vissza ideje, *nem* teljes joystick→C64→kép reakcióidő. A bitráta a böngészőben ténylegesen beérkezett adat, nem becslés.
+- Az automatikus GitHub Actions alapteszt **nullázott próbalemezt** használ, ezért nem igazolja a teljes Wizard of Wor játékmenetét. Ezzel az emulátor 50,6/50,1 FPS, 25,3 JPEG FPS és kb. 2255 kbit/s streamet adott a tesztkörnyezetben. **A NUC valódi sebességét a futó játék mérése mutatja.**
+
+A 48 kHz-es, 16 bites, kétcsatornás tömörítetlen PCM-hang önmagában **1536 kbit/s** játékosonként. A JPEG képek erre jönnek rá, ezért a WebSocketes alapváltozat WAN-adatforgalma jóval nagyobb, mint magának egy 1983-as játékgépnek a joystick-adata; a méréstől függően később érdemes Opus/WebRTC hang-/videokódolásra áttérni.
+
+Mobil landscape (rövid képernyő): **játék képernyője felül, TŰZ bal alsó sarokban, joystick jobb alsó sarokban**. A billentyűzet opcionális és az egész képernyő aljáról nyílik fel. Külön RUN/STOP gyorsgomb nincs, csak a billentyűzeten.
+
+Frissítés (az aktív sessionök megszakadnak):
+
+```bash
+cd ~/codes/wizard-of-wor
+git fetch origin
+git switch feat/server-c64-mvp
+git pull --ff-only
+bash scripts/update.sh --dry-run
+bash scripts/update.sh --apply
+curl -fsS https://pmqxyz.hopto.org/wizard-of-wor/api/version
+```
+
+Az utolsó kérés `{"ui":"KB3","keyboard":"bottom-sheet"}` JSON-t ad, ha az új NUC-verzió fut. Az első játéknál várj a betöltésre, és másold ki a mérést. A `/healthz` még mindig csak az alkalmazás- és fájlhozzáférést mutatja.
