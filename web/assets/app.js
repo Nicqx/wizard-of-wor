@@ -200,6 +200,10 @@ function connect(){
       if(msg.type==="welcome"){
         welcomed=true;window.clearTimeout(timer);
         sourceRate=msg.sample_rate;
+        if(msg.c64_joystick_port===1 || msg.c64_joystick_port===2)
+          document.getElementById("role").textContent=
+            (room.role===0?"1. játékos":"2. játékos")+
+            " · C64 joystickport "+msg.c64_joystick_port;
         perf.connection="kapcsolódva";
         notice("Csatlakozva. Jó játékot!");
       }
