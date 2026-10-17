@@ -16,7 +16,7 @@ from server.keyboard import key_event
 
 ROOT = Path(__file__).resolve().parent.parent
 PREFIX = "/wizard-of-wor"
-UI_VERSION = "KB5"
+UI_VERSION = "KB6"
 GAME = Path(os.environ.get("GAME_D64", "/games/game.d64"))
 CORE = Path(os.environ.get("VICE_CORE_PATH", "/opt/vice/vice_x64_libretro.so"))
 MAX_ROOMS = int(os.environ.get("MAX_ROOMS", "4"))
