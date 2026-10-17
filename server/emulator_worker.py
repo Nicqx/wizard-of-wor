@@ -72,6 +72,10 @@ class Emulator:
         stage("Libretro native logging bridge ready")
         self.pixel_format = 0
         self.video = None
+        self.luma = None
+        self.frame_signature = None
+        self.changed_since_stats = 0
+        self.previous_signature = None
         self.audio = bytearray()
         self.buttons = [0, 0]
         self.keyboard_cb = None
@@ -171,6 +175,13 @@ class Emulator:
             raw = C.string_at(ptr, height * pitch)
             decoder = {0: "BGR;15", 1: "BGRX", 2: "BGR;16"}[self.pixel_format]
             frame = Image.frombytes("RGB", (width, height), raw, "raw", decoder, pitch, 1)
+            # Tiny subsample to distinguish dark/static emulated screens from
+            # transport/rendering issues without streaming a framebuffer dump.
+            signature = frame.resize((16, 16)).convert("L").tobytes()
+            self.luma = round(sum(signature) / len(signature), 1)
+            if signature != self.previous_signature:
+                self.changed_since_stats += 1
+                self.previous_signature = signature
             out = io.BytesIO()
             frame.save(out, format="JPEG", quality=76, subsampling=0)
             self.video = out.getvalue()
@@ -251,6 +262,11 @@ class Emulator:
         deadline = time.monotonic()
         incoming = bytearray()
         count = 0
+        window_start = time.monotonic()
+        window_frames = 0
+        window_video_frames = 0
+        window_bytes = 0
+        window_work_ms = 0.0
         while True:
             while select.select([sys.stdin.buffer], [], [], 0)[0]:
                 chunk = os.read(sys.stdin.fileno(), 4096)
@@ -277,6 +293,7 @@ class Emulator:
                                 self.keys.input(events)
                     except ValueError:
                         pass
+            work_start = time.monotonic()
             self.audio.clear()
             self.video = None
             self.want_video = count % 2 == 0
@@ -287,9 +304,32 @@ class Emulator:
                 self.keys.after_frame()
             if self.video is not None:
                 pack(b"V", self.video)
+                window_video_frames += 1
+                window_bytes += len(self.video)
             if self.audio:
                 pack(b"A", bytes(self.audio))
+                window_bytes += len(self.audio)
+            window_frames += 1
+            window_work_ms += (time.monotonic() - work_start) * 1000
             count += 1
+            now = time.monotonic()
+            elapsed = now - window_start
+            if elapsed >= 2:
+                # These values are measured inside the emulation process:
+                # if fps << target, the NUC/core is not keeping real-time pace.
+                pack(b"S", json.dumps({
+                    "fps": round(window_frames / elapsed, 1),
+                    "target_fps": round(self.fps, 1),
+                    "video_fps": round(window_video_frames / elapsed, 1),
+                    "work_percent": round(min(999, window_work_ms / (elapsed * 10)), 1),
+                    "stream_kbps": round(window_bytes * 8 / elapsed / 1000, 1),
+                    "luma": self.luma,
+                    "changed_frames": self.changed_since_stats,
+                }).encode())
+                window_start = now
+                window_frames = window_video_frames = window_bytes = 0
+                window_work_ms = 0.0
+                self.changed_since_stats = 0
             deadline += interval
             delay = deadline - time.monotonic()
             if delay > 0:
