@@ -5,6 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 ARG VICE_SHA=f63b56688f3133a2bb17499db9eebb7ab81df5f5
 WORKDIR /build
+COPY server/libretro_log_bridge.c /build/libretro_log_bridge.c
+RUN cc -shared -fPIC -O2 -Wall -Wextra -o /build/libretro_log_bridge.so /build/libretro_log_bridge.c
 RUN git clone https://github.com/libretro/vice-libretro.git vice && \
     cd vice && git checkout "$VICE_SHA" && make -j2 EMUTYPE=x64 && \
     test -s vice_x64_libretro.so
@@ -13,6 +15,7 @@ FROM python:3.12-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 zlib1g libpng16-16 && rm -rf /var/lib/apt/lists/*
 COPY --from=vice-builder /build/vice/vice_x64_libretro.so /opt/vice/vice_x64_libretro.so
+COPY --from=vice-builder /build/libretro_log_bridge.so /opt/vice/libretro_log_bridge.so
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
