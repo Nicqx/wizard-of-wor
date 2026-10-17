@@ -10,6 +10,7 @@ import sys
 import time
 
 from PIL import Image
+from server.keyboard import KeyboardDriver
 
 # Keep the binary protocol on the original stdout FD. Native VICE printf goes to stderr.
 IPC = os.fdopen(os.dup(sys.stdout.fileno()), "wb", buffering=0)
@@ -21,6 +22,7 @@ AUDIO = C.CFUNCTYPE(None, C.c_int16, C.c_int16)
 BATCH = C.CFUNCTYPE(C.c_size_t, C.c_void_p, C.c_size_t)
 POLL = C.CFUNCTYPE(None)
 INPUT = C.CFUNCTYPE(C.c_int16, C.c_uint, C.c_uint, C.c_uint, C.c_uint)
+KEYBOARD = C.CFUNCTYPE(None, C.c_bool, C.c_uint, C.c_uint32, C.c_uint16)
 
 class GameInfo(C.Structure):
     _fields_ = [("path", C.c_char_p), ("data", C.c_void_p),
@@ -72,6 +74,8 @@ class Emulator:
         self.video = None
         self.audio = bytearray()
         self.buttons = [0, 0]
+        self.keyboard_cb = None
+        self.keys = None
         self.want_video = False
         self.last_frame = 0
         self.samples = 48000
@@ -93,6 +97,13 @@ class Emulator:
 
         @ENV
         def env(cmd, ptr):
+            if cmd == 12 and ptr:  # SET_KEYBOARD_CALLBACK, supplied by VICE
+                fn = C.cast(ptr, C.POINTER(C.c_void_p))[0]
+                if not fn:
+                    return False
+                self.keyboard_cb = KEYBOARD(fn)
+                self.keys = KeyboardDriver(self.keyboard_cb)
+                return True
             if cmd == 27:  # RETRO_ENVIRONMENT_GET_LOG_INTERFACE
                 if not ptr:
                     return False
@@ -253,16 +264,27 @@ class Emulator:
                     incoming = bytearray(remainder)
                     try:
                         states = json.loads(line)
-                        if isinstance(states, list) and len(states) == 2 and all(
-                            type(n) is int and 0 <= n <= 31 for n in states
-                        ):
-                            self.buttons[:] = states
+                        if isinstance(states, list):  # Legacy pad-only protocol
+                            states = {"pads": states, "keys": []}
+                        if isinstance(states, dict):
+                            pads = states.get("pads")
+                            if isinstance(pads, list) and len(pads) == 2 and all(
+                                type(n) is int and 0 <= n <= 31 for n in pads
+                            ):
+                                self.buttons[:] = pads
+                            events = states.get("keys")
+                            if self.keys and isinstance(events, list) and len(events) <= 64:
+                                self.keys.input(events)
                     except ValueError:
                         pass
             self.audio.clear()
             self.video = None
             self.want_video = count % 2 == 0
+            if self.keys:
+                self.keys.before_frame()
             self.core.retro_run()
+            if self.keys:
+                self.keys.after_frame()
             if self.video is not None:
                 pack(b"V", self.video)
             if self.audio:
