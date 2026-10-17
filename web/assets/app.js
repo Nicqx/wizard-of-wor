@@ -9,7 +9,8 @@ const joystick = document.getElementById("joystick");
 const knob = document.getElementById("knob");
 const fire = document.getElementById("fire");
 const controls = {up:false, down:false, left:false, right:false, fire:false};
-let ws = null, room = null, sound = null, muted = false, audioTime = 0, sourceRate = 48000;
+let ws = null, room = null, muted = false, sourceRate = 48000;
+const sidAudio = window.createC64Audio(window.AudioContext || window.webkitAudioContext);
 let frameNumber = 0, appliedFrame = 0, joyPointer = null, firePointer = null;
 const perfStats = document.getElementById("perfStats");
 const copyStats = document.getElementById("copyStats");
@@ -17,7 +18,7 @@ const perf = {
   start: performance.now(), windowStart: performance.now(),
   networkBytes: 0, arrived: 0, painted: 0, decodeTotal: 0, decodeCount: 0,
   lastPaint: 0, rtt: null, worker: null, dropped: 0, queue: 0, report: "",
-  connection: "nem kapcsolódott"
+  connection: "nem kapcsolódott", lostAudio:0, lostVideo:0
 };
 function reportPerf(){
   if(!room)return;
@@ -32,6 +33,7 @@ function reportPerf(){
   const freshness=perf.lastPaint ? ((now-perf.lastPaint)/1000).toFixed(1)+" s" : "nincs kép";
   const rtt=perf.rtt===null ? "—" : perf.rtt.toFixed(0)+" ms";
   const dec=perf.decodeCount ? (perf.decodeTotal/perf.decodeCount).toFixed(1)+" ms" : "—";
+  const audioStats=sidAudio.stats();
   let cause="";
   if(worker && worker.fps < worker.target_fps*0.75) cause=" | Figyelem: lassú emuláció";
   else if(worker && paintFps<8 && worker.video_fps>=15)
@@ -44,6 +46,10 @@ function reportPerf(){
     +" | RTT: "+rtt+" | utolsó kép: "+freshness
     +" | dekódolás: "+dec+" | szerver sor: "+perf.queue
     +" | eldobott csomag: "+perf.dropped
+    +" (hang: "+perf.lostAudio+", kép: "+perf.lostVideo+")"
+    +" | hangpuffer: "+audioStats.leadMs+" ms"
+    +" | hangkihagyás: "+audioStats.underflows
+    +" | hangállapot: "+audioStats.state
     +" | C64 fényerő: "+screen+cause;
   perfStats.textContent=perf.report;
   perf.windowStart=now;
@@ -122,23 +128,8 @@ document.addEventListener("keyup",ev=>{
 });
 window.addEventListener("blur",()=>{resetControls();c64Keyboard.release();});
 document.addEventListener("visibilitychange",()=>{if(document.hidden){resetControls();c64Keyboard.release();}});
-async function enableSound(){
-  if(sound){await sound.resume();return;}
-  sound=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"interactive"});
-  await sound.resume();audioTime=sound.currentTime+0.1;
-}
-function audio(data){
-  if(!sound||muted||data.byteLength<4)return;
-  const samples=new DataView(data.buffer,data.byteOffset,data.byteLength);
-  const count=Math.floor(data.byteLength/4);
-  if(count<1)return;
-  const buffer=sound.createBuffer(2,count,sourceRate);
-  const left=buffer.getChannelData(0),right=buffer.getChannelData(1);
-  for(let i=0;i<count;i++){left[i]=samples.getInt16(i*4,true)/32768;right[i]=samples.getInt16(i*4+2,true)/32768;}
-  const node=sound.createBufferSource();node.buffer=buffer;node.connect(sound.destination);
-  if(audioTime<sound.currentTime+0.025||audioTime>sound.currentTime+0.4)audioTime=sound.currentTime+0.09;
-  node.start(audioTime);audioTime+=count/sourceRate;
-}
+async function enableSound(){await sidAudio.enable();}
+function audio(data){sidAudio.receive(data,sourceRate);}
 async function drawJPEG(payload,id){
   const decodeStart=performance.now();
   try{
@@ -211,6 +202,8 @@ function connect(){
       if(msg.type==="stats"){
         perf.worker=msg.emulator;
         perf.dropped=msg.network?.dropped??0;
+        perf.lostAudio=msg.network?.dropped_audio??0;
+        perf.lostVideo=msg.network?.dropped_video??0;
         perf.queue=msg.network?.queue??0;
       }
       if(msg.type==="players"){document.getElementById("players").textContent=
@@ -242,7 +235,7 @@ function connect(){
   };
 }
 function displayRoom(data){
-  room=data;perf.worker=null;perf.lastPaint=0;perf.connection="kapcsolódás...";
+  room=data;sidAudio.reset();perf.worker=null;perf.lastPaint=0;perf.connection="kapcsolódás...";
   perf.windowStart=performance.now();
   sessionStorage.setItem("wizard_room",JSON.stringify(room));
   lobby.classList.add("hidden");game.classList.remove("hidden");
@@ -276,6 +269,7 @@ document.getElementById("invite").addEventListener("click",async()=>{
 });
 document.getElementById("mute").addEventListener("click",ev=>{
   muted=!muted;ev.target.textContent=muted?"Hang: KI":"Hang: BE";
+  sidAudio.setMuted(muted);
   if(!muted)enableSound().catch(()=>{});
 });
 document.getElementById("fullscreen").addEventListener("click",()=>{
