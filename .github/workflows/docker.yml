@@ -23,6 +23,8 @@ jobs:
           push: false
           load: true
           tags: wizard-of-wor:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Smoke-test container readiness
         shell: bash
         run: |
@@ -69,7 +71,10 @@ jobs:
             --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
             wizard-of-wor:ci /bin/sh -c \
             'apt-get update -qq && apt-get install -y -qq --no-install-recommends gdb >/dev/null && \
-            timeout 20 gdb -batch -q -ex run -ex "thread apply all bt" --args python -m server.emulator_worker'
+            timeout 20 gdb -batch -q -ex run -ex "info symbol \$pc" \
+            -ex "info registers rdi rsi rdx rip" -ex "x/8i \$pc-12" \
+            -ex "frame 1" -ex "info symbol \$pc" -ex "x/24i \$pc-48" \
+            -ex "thread apply all bt" --args python -m server.emulator_worker'
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
