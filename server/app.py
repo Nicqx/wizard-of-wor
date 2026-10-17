@@ -194,7 +194,12 @@ class Room:
                 await asyncio.sleep(0.02)
                 if not self.proc or self.proc.returncode is not None:
                     return
-                values = [self.input[0], self.input[1]]
+                # A second pad must stay completely inactive until a
+                # second participant has authenticated over WebSocket.
+                values = [
+                    self.input[role] if role in self.sockets else 0
+                    for role in (0, 1)
+                ]
                 events = []
                 for _ in range(min(64, len(self.key_events))):
                     events.append(self.key_events.popleft())
