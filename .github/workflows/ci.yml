@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m compileall -q server tests
+      - run: python -m pytest -q
+      - name: Browser JavaScript syntax and C64 keyboard UI smoke
+        run: |
+          node --check web/assets/app.js
+          node --check web/assets/c64-keyboard.js
+          node --check web/assets/audio-stream.js
+          node tests/test_keyboard_ui.js
+          node tests/test_audio_ui.js
+          node tests/test_room_recovery.js

@@ -1,0 +1,92 @@
+name: Docker image
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build open source core + server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: wizard-of-wor:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke-test container readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          Path("/tmp/wizard-ci.d64").write_bytes(bytes(174848))
+          PY
+          chmod 644 /tmp/wizard-ci.d64
+          docker run -d --name wizard-ci --rm \
+            -p 127.0.0.1:8107:8107 \
+            --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
+            wizard-of-wor:ci
+          trap 'docker logs wizard-ci; docker stop wizard-ci >/dev/null' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8107/healthz > /tmp/wizard-health.json; then
+              python3 - <<'PY'
+          import json
+          data = json.load(open('/tmp/wizard-health.json'))
+          assert data['ok'] is True, data
+          assert data['checks'] == {'game_d64': 'ok', 'vice_core': 'ok'}, data
+          print('Container HTTP health and mounted D64/core checks: PASS')
+          PY
+              docker exec wizard-ci python -m server.smoke_stream
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Container HTTP server did not become ready in the smoke-test window' >&2
+          exit 1
+      - name: Smoke-test native VICE worker startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Test-only empty disk (no copyrighted content): validates initialization ABI.
+          docker run --rm \
+            --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
+            wizard-of-wor:ci python -m server.smoke_worker
+      - name: Diagnose native VICE crash (CI only)
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --user 0 --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
+            --mount type=bind,src=/tmp/wizard-ci.d64,dst=/games/game.d64,readonly \
+            wizard-of-wor:ci /bin/sh -c \
+            'apt-get update -qq && apt-get install -y -qq --no-install-recommends gdb >/dev/null && \
+            timeout 20 gdb -batch -q -ex run -ex "info symbol \$pc" \
+            -ex "info registers rdi rsi rdx rip" -ex "x/8i \$pc-12" \
+            -ex "frame 1" -ex "info symbol \$pc" -ex "x/24i \$pc-48" \
+            -ex "thread apply all bt" --args python -m server.emulator_worker'
+      - name: Login to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish image on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/nicqx/wizard-of-wor:main

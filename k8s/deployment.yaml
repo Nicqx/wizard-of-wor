@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-of-wor
+  namespace: default
+  labels: {app: wizard-of-wor}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: wizard-of-wor}
+  template:
+    metadata:
+      labels: {app: wizard-of-wor}
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: nuc
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: wizard
+          image: ghcr.io/nicqx/wizard-of-wor:main
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8107}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          env:
+            - {name: PORT, value: "8107"}
+            - {name: GAME_D64, value: "/games/game.d64"}
+            - {name: VICE_PRIMARY_JOYPORT, value: "1"}
+            - {name: PUBLIC_ORIGIN, value: "https://pmqxyz.hopto.org"}
+            - {name: MAX_ROOMS, value: "4"}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "2", memory: 1024Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: game
+              mountPath: /games
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: game
+          secret:
+            secretName: wizard-of-wor-game
+            defaultMode: 0444
+            items:
+              - {key: "game.d64", path: "game.d64"}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-of-wor-service
+  namespace: default
+spec:
+  type: ClusterIP
+  selector: {app: wizard-of-wor}
+  ports:
+    - {name: http, port: 8107, targetPort: http}

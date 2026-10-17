@@ -1,0 +1,28 @@
+services:
+  wizard-of-wor:
+    build: .
+    image: wizard-of-wor:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8107:8107"
+    environment:
+      MAX_ROOMS: "4"
+      GAME_D64: "/games/game.d64"
+    volumes:
+      - type: bind
+        source: ./local-roms/game.d64
+        target: /games/game.d64
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 1g
+    cpus: 2.5

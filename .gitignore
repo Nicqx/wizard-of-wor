@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+local-roms/
+*.d64
+*.crt
+*.prg
+*.tap
+.env
+*.log
