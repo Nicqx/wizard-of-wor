@@ -11,6 +11,53 @@ const fire = document.getElementById("fire");
 const controls = {up:false, down:false, left:false, right:false, fire:false};
 let ws = null, room = null, sound = null, muted = false, audioTime = 0, sourceRate = 48000;
 let frameNumber = 0, appliedFrame = 0, joyPointer = null, firePointer = null;
+const perfStats = document.getElementById("perfStats");
+const copyStats = document.getElementById("copyStats");
+const perf = {
+  start: performance.now(), windowStart: performance.now(),
+  networkBytes: 0, arrived: 0, painted: 0, decodeTotal: 0, decodeCount: 0,
+  lastPaint: 0, rtt: null, worker: null, dropped: 0, queue: 0, report: ""
+};
+function reportPerf(){
+  if(!room)return;
+  const now=performance.now();
+  const elapsed=Math.max(0.2,(now-perf.windowStart)/1000);
+  const netKbps=perf.networkBytes*8/elapsed/1000;
+  const recvFps=perf.arrived/elapsed;
+  const paintFps=perf.painted/elapsed;
+  const worker=perf.worker;
+  const emulator=worker ? worker.fps.toFixed(1)+"/"+worker.target_fps.toFixed(1) : "—";
+  const screen=worker && worker.luma!==null ? worker.luma.toFixed(0)+"/255 ("+worker.changed_frames+" változás)" : "—";
+  const freshness=perf.lastPaint ? ((now-perf.lastPaint)/1000).toFixed(1)+" s" : "nincs kép";
+  const rtt=perf.rtt===null ? "—" : perf.rtt.toFixed(0)+" ms";
+  const dec=perf.decodeCount ? (perf.decodeTotal/perf.decodeCount).toFixed(1)+" ms" : "—";
+  let cause="";
+  if(worker && worker.fps < worker.target_fps*0.75) cause=" | Figyelem: lassú emuláció";
+  else if(worker && paintFps<8 && worker.video_fps>=15)
+    cause=" | Figyelem: képátvitel vagy megjelenítés lassú";
+  if(worker && worker.luma < 10 && worker.changed_frames===0)
+    cause+=" | A C64 képe sötét, alig változik";
+  perf.report="C64: "+emulator+" FPS | átvett: "+recvFps.toFixed(1)+" FPS"
+    +" | kirajzolt: "+paintFps.toFixed(1)+" FPS"
+    +" | adat: "+netKbps.toFixed(0)+" kbit/s"
+    +" | RTT: "+rtt+" | utolsó kép: "+freshness
+    +" | dekódolás: "+dec+" | szerver sor: "+perf.queue
+    +" | eldobott csomag: "+perf.dropped
+    +" | C64 fényerő: "+screen+cause;
+  perfStats.textContent=perf.report;
+  perf.windowStart=now;
+  perf.networkBytes=perf.arrived=perf.painted=perf.decodeTotal=perf.decodeCount=0;
+  if(ws && ws.readyState===WebSocket.OPEN)
+    ws.send(JSON.stringify({type:"ping",sent:performance.now()}));
+}
+window.setInterval(reportPerf,2000);
+copyStats.addEventListener("click",async ()=>{
+  try{
+    await navigator.clipboard.writeText(perf.report || perfStats.textContent);
+    notice("A mérés kimásolva; ezt beillesztheted a beszélgetésbe.");
+  }catch(err){notice("A böngésző nem engedte a másolást: jelöld ki a mérés szövegét.");}
+});
+
 ctx.fillStyle = "#090a1e";ctx.fillRect(0,0,canvas.width,canvas.height);
 function notice(message){status.textContent = message;}
 function resetControls(){Object.keys(controls).forEach(k=>controls[k]=false);updateKnob();sendInput();}
@@ -92,11 +139,15 @@ function audio(data){
   node.start(audioTime);audioTime+=count/sourceRate;
 }
 async function drawJPEG(payload,id){
+  const decodeStart=performance.now();
   try{
     const bitmap=await createImageBitmap(new Blob([payload],{type:"image/jpeg"}));
+    perf.decodeTotal+=performance.now()-decodeStart;
+    perf.decodeCount++;
     if(id>appliedFrame){
       if(canvas.width!==bitmap.width||canvas.height!==bitmap.height){canvas.width=bitmap.width;canvas.height=bitmap.height;}
       ctx.drawImage(bitmap,0,0);appliedFrame=id;
+      perf.lastPaint=performance.now();perf.painted++;
     }
     bitmap.close();
   }catch(err){console.warn("Frame decode failed",err);}
@@ -111,11 +162,18 @@ function connect(){
     if(typeof ev.data==="string"){
       const msg=JSON.parse(ev.data);
       if(msg.type==="welcome"){sourceRate=msg.sample_rate;notice("Csatlakozva. Jó játékot!");}
+      if(msg.type==="pong" && typeof msg.sent==="number")perf.rtt=performance.now()-msg.sent;
+      if(msg.type==="stats"){
+        perf.worker=msg.emulator;
+        perf.dropped=msg.network?.dropped??0;
+        perf.queue=msg.network?.queue??0;
+      }
       if(msg.type==="players"){document.getElementById("players").textContent=
         "1. játékos: "+(msg.connected[0]?"online":"offline")+"  ·  2. játékos: "+(msg.connected[1]?"online":"offline");}
     }else{
       const b=new Uint8Array(ev.data);
-      if(b[0]===86)drawJPEG(b.subarray(1),++frameNumber);
+      perf.networkBytes+=b.byteLength;
+      if(b[0]===86){perf.arrived++;drawJPEG(b.subarray(1),++frameNumber);}
       if(b[0]===65)audio(b.subarray(1));
     }
   };
@@ -123,7 +181,9 @@ function connect(){
   ws.onerror=()=>notice("Hálózati hiba történt.");
 }
 function displayRoom(data){
-  room=data;sessionStorage.setItem("wizard_room",JSON.stringify(room));
+  room=data;perf.worker=null;perf.lastPaint=0;
+  perf.windowStart=performance.now();
+  sessionStorage.setItem("wizard_room",JSON.stringify(room));
   lobby.classList.add("hidden");game.classList.remove("hidden");
   document.getElementById("code").textContent=room.code;
   document.getElementById("role").textContent=(room.role===0?"1. játékos":"2. játékos");
