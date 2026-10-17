@@ -29,7 +29,7 @@ class MockElement {
   focus(){document.activeElement=this;}
 }
 const els={};
-for(const id of ["virtualKeyboard","keyboardToggle","runstop","keyboardClose",
+for(const id of ["virtualKeyboard","keyboardToggle","keyboardClose",
                  "keyboardBackdrop","keyboardRows"]){
   els[id]=new MockElement(id);
 }
@@ -79,9 +79,9 @@ assert.equal(messages.at(-1).key,"A");
 assert.equal(messages.at(-1).down,false);
 const joy={...enter,code:"Space"};
 assert.equal(keyboard.physical(joy,true),false); // remains joystick
-els.runstop.emit("pointerdown");
-els.runstop.emit("pointerup");
+assert.equal(keyboard.physical({...enter,code:"Escape"},true),true);
+assert.equal(keyboard.physical({...enter,code:"Escape"},false),true);
 assert.deepEqual(messages.slice(-2),[
   {key:"RUN_STOP",down:true},{key:"RUN_STOP",down:false}
 ]);
-console.log("C64 keyboard modal, key events, quick RUN/STOP and joystick isolation: PASS");
+console.log("C64 keyboard modal, key events, RUN/STOP inside keyboard and joystick isolation: PASS");
