@@ -16,7 +16,7 @@ from server.keyboard import key_event
 
 ROOT = Path(__file__).resolve().parent.parent
 PREFIX = "/wizard-of-wor"
-UI_VERSION = "KB3"
+UI_VERSION = "KB4"
 GAME = Path(os.environ.get("GAME_D64", "/games/game.d64"))
 CORE = Path(os.environ.get("VICE_CORE_PATH", "/opt/vice/vice_x64_libretro.so"))
 MAX_ROOMS = int(os.environ.get("MAX_ROOMS", "4"))
@@ -162,7 +162,11 @@ class Room:
                     await ws.send_str(payload)
                 else:
                     await ws.send_bytes(payload)
-        except (ConnectionError, OSError, RuntimeError, asyncio.CancelledError):
+        except asyncio.CancelledError:
+            return
+        except (ConnectionError, OSError, RuntimeError) as exc:
+            log.warning("Room %s player %s media stream stopped: %r",
+                        self.code, role + 1, exc)
             return
 
     def change_key(self, role, event):
@@ -303,11 +307,19 @@ async def ws_room(request):
     code = request.match_info["code"]
     room = get_rooms(request).get(code)
     if not room:
+        log.info("WebSocket requested for expired room %s", code)
         raise web.HTTPNotFound()
     # Token checked in first WS message; never place secrets in URLs or logs.
     origin = request.headers.get("Origin")
     host = request.headers.get("Host", "")
-    if origin and origin not in ("https://" + host, "http://" + host):
+    # Reverse proxies may pass a backend Host rather than the public Host.
+    # A fixed PUBLIC_ORIGIN is safer than trusting arbitrary Forwarded headers.
+    allowed_origins = {"https://" + host, "http://" + host}
+    configured_origin = os.environ.get("PUBLIC_ORIGIN", "").rstrip("/")
+    if configured_origin:
+        allowed_origins.add(configured_origin)
+    if origin and origin not in allowed_origins:
+        log.warning("Room %s WebSocket origin rejected (host mismatch)", code)
         raise web.HTTPForbidden()
     ws = web.WebSocketResponse(heartbeat=15, max_msg_size=1024)
     await ws.prepare(request)
@@ -326,9 +338,16 @@ async def ws_room(request):
                 role = 0
             elif room.guest and secrets.compare_digest(token, room.guest):
                 role = 1
-        if role is None or role in room.sockets:
+        if role is None:
+            log.warning("Room %s WebSocket authentication rejected", code)
             return ws
+        # A page reload can race with closing the previous socket. Replace it:
+        # the room token authorizes the same role, not a second controller.
+        prior = room.sockets.get(role)
+        if prior and not prior.closed:
+            await prior.close(code=4001, message=b"New connection replaced old connection")
         room.sockets[role] = ws
+        log.info("Room %s player %s WebSocket authenticated", code, role + 1)
         queue = asyncio.Queue(maxsize=12)
         room.media_queues[role] = queue
         room.media_tasks[role] = asyncio.create_task(room.pump_media(role, ws, queue))
@@ -360,6 +379,7 @@ async def ws_room(request):
                 break
     finally:
         if role is not None and room.sockets.get(role) is ws:
+            log.info("Room %s player %s WebSocket disconnected", code, role + 1)
             room.sockets.pop(role, None)
             room.media_queues.pop(role, None)
             sender_task = room.media_tasks.pop(role, None)
