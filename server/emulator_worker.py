@@ -76,6 +76,16 @@ class Emulator:
         self.last_frame = 0
         self.samples = 48000
         self.strings = []
+        # Defaults are announced through SET_VARIABLES during
+        # retro_set_environment. Missing defaults such as
+        # vice_sound_sample_rate leave the VICE core at 0 Hz and cause SIGFPE.
+        self.core_options = {}
+        self.option_overrides = {
+            b"vice_joyport": b"2",
+            b"vice_autostart": b"enabled",
+            b"vice_turbo_fire": b"disabled",
+            b"vice_sound_sample_rate": b"48000",
+        }
         directory = os.environ.get("VICE_SYSTEM_DIR", "/tmp/vice")
         Path(directory).mkdir(parents=True, exist_ok=True)
         self.system_dir = os.fsencode(directory)
@@ -102,20 +112,39 @@ class Emulator:
             if cmd == 3:  # GET_CAN_DUPE
                 C.cast(ptr, C.POINTER(C.c_bool))[0] = True
                 return True
-            if cmd == 15:  # GET_VARIABLE
+            if cmd == 16 and ptr:  # SET_VARIABLES (legacy core option table)
+                # VICE advertises NUL-terminated Variable[] entries with values
+                # "Description; default|alternative|...". The first value is
+                # explicitly placed first by the VICE core.
+                entries = C.cast(ptr, C.POINTER(Variable))
+                new_options = {}
+                for i in range(512):
+                    item = entries[i]
+                    if not item.key:
+                        break
+                    desc = item.value or b""
+                    first = desc.partition(b";")[2].strip().split(b"|", 1)[0].strip()
+                    if first:
+                        new_options[bytes(item.key)] = bytes(first)
+                else:
+                    return False
+                self.core_options = new_options
+                stage(f"Loaded {len(new_options)} VICE core defaults")
+                return True
+            if cmd == 15 and ptr:  # GET_VARIABLE
                 var = C.cast(ptr, C.POINTER(Variable))[0]
-                opts = {b"vice_joyport": b"2", b"vice_autostart": b"enabled",
-                        b"vice_turbo_fire": b"disabled"}
-                value = opts.get(var.key)
+                value = self.option_overrides.get(
+                    var.key, self.core_options.get(var.key)
+                )
                 if value is None:
                     var.value = None
                     return False
-                var.value = value
+                var.value = value  # self-owned bytes stay alive after callback
                 return True
-            if cmd == 17:  # GET_VARIABLE_UPDATE
+            if cmd == 17 and ptr:  # GET_VARIABLE_UPDATE
                 C.cast(ptr, C.POINTER(C.c_bool))[0] = False
                 return True
-            if cmd in (16, 32, 53):  # SET_VARIABLES and core options announcements
+            if cmd in (32, 53):  # SET_SYSTEM_AV_INFO, SET_CORE_OPTIONS
                 return True
             if cmd == 52:  # GET_CORE_OPTIONS_VERSION (legacy variables)
                 C.cast(ptr, C.POINTER(C.c_uint))[0] = 0
