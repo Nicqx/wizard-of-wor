@@ -159,6 +159,19 @@ class Room:
         self.media_drops[role] += 1
         self.media_drop_kinds[role][kind] += 1
 
+    def evict_queued(self, role, queue, preference):
+        """Drop one queued message matching preference, preserving order."""
+        pending = []
+        while not queue.empty():
+            pending.append(queue.get_nowait())
+        victim = next((i for i, entry in enumerate(pending)
+                       if preference(entry)), None)
+        if victim is not None:
+            self.record_media_drop(role, pending.pop(victim))
+        for entry in pending:
+            queue.put_nowait(entry)
+        return victim is not None
+
     def queue_media(self, role, queue, packet):
         """Do not throw away SID samples just because a JPEG is queued.
 
@@ -170,29 +183,22 @@ class Room:
         is_text, payload = packet
         is_audio = not is_text and payload[:1] == b"A"
         is_video = not is_text and payload[:1] == b"V"
+        is_old_video = lambda entry: not entry[0] and entry[1][:1] == b"V"
         if is_video and queue.qsize() >= VIDEO_BACKLOG_LIMIT:
-            self.record_media_drop(role, packet)
-            return
+            # Prefer replacing a stale JPEG with the latest one; never let
+            # old pictures accumulate behind SID samples.
+            if not self.evict_queued(role, queue, is_old_video):
+                self.record_media_drop(role, packet)
+                return
         if is_text and queue.full():
             self.record_media_drop(role, packet)
             return
         if queue.full():
-            # Small bounded queue (<=32 packets), on one asyncio event loop.
-            # Remove *one* oldest video first, then telemetry. Audio is a
-            # last resort only when the connection cannot carry its bitrate.
-            pending = []
-            while not queue.empty():
-                pending.append(queue.get_nowait())
-            victim = next((i for i, entry in enumerate(pending)
-                           if not entry[0] and entry[1][:1] == b"V"), None)
-            if victim is None:
-                victim = next((i for i, entry in enumerate(pending)
-                               if entry[0]), None)
-            if victim is None:
-                victim = 0
-            self.record_media_drop(role, pending.pop(victim))
-            for entry in pending:
-                queue.put_nowait(entry)
+            # Drop stale pictures first, status next, audio only as a
+            # last resort. Keep all survivors in their original order.
+            if not self.evict_queued(role, queue, is_old_video):
+                if not self.evict_queued(role, queue, lambda item: item[0]):
+                    self.evict_queued(role, queue, lambda item: True)
         try:
             queue.put_nowait(packet)
         except asyncio.QueueFull:
