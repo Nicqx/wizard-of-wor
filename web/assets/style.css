@@ -29,3 +29,28 @@ button:disabled{opacity:.5;cursor:wait}.hidden{display:none!important}
 #status{min-height:1.5em;color:#f4bf76}footer{font-size:.8rem;padding-top:20px}
 @media(max-width:620px){.lobby{grid-template-columns:1fr}.action{padding:17px}.bar{align-items:flex-start}.bar span{display:block;margin:4px 0}.controls{margin:12px 0}.fire{width:94px;height:94px}.joystick{width:146px;height:146px}.screen-wrap{border-width:3px}}
 @media(orientation:landscape) and (max-height:580px){main{padding:5px 9px}header{margin:0 0 4px}header h1{font-size:1.2rem;margin:4px}header p,.help,footer{display:none}.bar{margin:0 0 3px}.secondary{padding:4px 8px}.game{display:grid;grid-template-columns:minmax(0,1fr) 175px;gap:6px}.bar{grid-column:1/-1}.screen-wrap{max-height:calc(100dvh - 92px)}.controls{grid-column:2;grid-row:2;flex-direction:column-reverse;margin:0;gap:5px}.joystick{width:114px;height:114px}.joystick-knob{width:42px;height:42px}.joystick-ring{inset:20px}.fire{width:67px;height:67px;font-size:.85rem;border-width:4px}#players{grid-column:1/-1;font-size:.75rem;margin:0}#status{margin:0}}
+
+/* Accessible C64 keyboard overlay, hidden by default. Does not displace the
+   classic two-thumb controller when closed. */
+.runstop-quick{background:#7f3561;color:#fff}
+.virtual-keyboard{margin:12px 0;padding:12px;background:#131a3b;border:1px solid #5466a3;border-radius:10px;min-width:0}
+.keyboard-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:9px;font-size:.85rem}
+.keyboard-header strong{color:#f5b847}.keyboard-header span{color:#a9bde7}
+.keyboard-rows{display:flex;flex-direction:column;gap:5px}
+.keyboard-row{display:flex;justify-content:center;gap:4px;width:100%}
+.c64-key{flex:1 1 0;min-width:0;min-height:39px;padding:4px 2px;font-family:monospace;font-size:clamp(.55rem,1.8vw,.85rem);font-weight:700;white-space:normal;overflow-wrap:anywhere;line-height:1.05;background:#343e79;color:#fff;border:1px solid #7585d4;border-bottom-width:3px;border-radius:4px;touch-action:none;-webkit-user-select:none;user-select:none}
+.c64-key.wide{flex:5 1 0;background:#333866}
+.c64-key.down,.c64-key:active{background:#e6a843;color:#131428;transform:translateY(1px);border-bottom-width:1px}
+.c64-key:focus-visible{outline:2px solid #f9e29b;outline-offset:1px}
+@media(max-width:620px){
+  .virtual-keyboard{padding:6px;margin:7px 0}
+  .keyboard-row{gap:2px}
+  .c64-key{font-size:.55rem;min-height:36px;padding:3px 1px}
+  .keyboard-header{font-size:.69rem}
+}
+@media(orientation:landscape) and (max-height:580px){
+  .virtual-keyboard{grid-column:1/-1;grid-row:3;margin:2px 0;padding:5px;max-height:37dvh;overflow:auto}
+  .keyboard-rows{gap:3px}
+  .c64-key{min-height:29px}
+  #players{grid-row:4}
+}
