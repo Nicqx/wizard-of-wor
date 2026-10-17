@@ -23,6 +23,8 @@ MAX_ROOMS = int(os.environ.get("MAX_ROOMS", "4"))
 ROOM_TTL = 3600
 IDLE_TTL = 300
 MAX_PACKET = 2_000_000
+MEDIA_QUEUE_LIMIT = 32
+VIDEO_BACKLOG_LIMIT = 9
 log = logging.getLogger("wizard")
 
 def mask(data):
@@ -48,6 +50,10 @@ class Room:
     media_queues: dict = field(default_factory=dict)
     media_tasks: dict = field(default_factory=dict)
     media_drops: dict = field(default_factory=lambda: {0: 0, 1: 0})
+    media_drop_kinds: dict = field(default_factory=lambda: {
+        0: {"audio": 0, "video": 0, "stats": 0},
+        1: {"audio": 0, "video": 0, "stats": 0},
+    })
     emulator_stats: dict = field(default_factory=dict)
     input: dict = field(default_factory=lambda: {0: 0, 1: 0})
     held_keys: dict = field(default_factory=lambda: {0: set(), 1: set()})
@@ -119,6 +125,8 @@ class Room:
                             "network": {
                                 "queue": queue.qsize(),
                                 "dropped": self.media_drops[role],
+                                "dropped_audio": self.media_drop_kinds[role]["audio"],
+                                "dropped_video": self.media_drop_kinds[role]["video"],
                             },
                         })))
         except (asyncio.IncompleteReadError, ConnectionError) as exc:
@@ -145,21 +153,50 @@ class Room:
             for ws in tuple(self.sockets.values()):
                 await ws.close(code=1011, message=b"Emulator stopped")
 
+    def record_media_drop(self, role, packet):
+        is_text, payload = packet
+        kind = "stats" if is_text else ("audio" if payload[:1] == b"A" else "video")
+        self.media_drops[role] += 1
+        self.media_drop_kinds[role][kind] += 1
+
     def queue_media(self, role, queue, packet):
-        # Keep no more than ~160ms of 50Hz audio + 25Hz JPEG frames.
-        # Drop *old* media if a client falls behind; low-latency game
-        # controls and the emulator itself must never be stalled by WAN.
+        """Do not throw away SID samples just because a JPEG is queued.
+
+        Audio carries a continuous waveform: dropping one 20ms chunk makes
+        missing notes. Under congestion prefer dropping JPEG (which can be
+        replaced by the next frame). Neither the worker nor its pipe reader
+        waits for a network client.
+        """
+        is_text, payload = packet
+        is_audio = not is_text and payload[:1] == b"A"
+        is_video = not is_text and payload[:1] == b"V"
+        if is_video and queue.qsize() >= VIDEO_BACKLOG_LIMIT:
+            self.record_media_drop(role, packet)
+            return
+        if is_text and queue.full():
+            self.record_media_drop(role, packet)
+            return
         if queue.full():
-            while queue.qsize() > 5:
-                try:
-                    queue.get_nowait()
-                    self.media_drops[role] += 1
-                except asyncio.QueueEmpty:
-                    break
+            # Small bounded queue (<=32 packets), on one asyncio event loop.
+            # Remove *one* oldest video first, then telemetry. Audio is a
+            # last resort only when the connection cannot carry its bitrate.
+            pending = []
+            while not queue.empty():
+                pending.append(queue.get_nowait())
+            victim = next((i for i, entry in enumerate(pending)
+                           if not entry[0] and entry[1][:1] == b"V"), None)
+            if victim is None:
+                victim = next((i for i, entry in enumerate(pending)
+                               if entry[0]), None)
+            if victim is None:
+                victim = 0
+            self.record_media_drop(role, pending.pop(victim))
+            for entry in pending:
+                queue.put_nowait(entry)
         try:
             queue.put_nowait(packet)
         except asyncio.QueueFull:
-            self.media_drops[role] += 1
+            self.record_media_drop(role, packet)
 
     async def pump_media(self, role, ws, queue):
         try:
@@ -362,7 +399,7 @@ async def ws_room(request):
             await prior.close(code=4001, message=b"New connection replaced old connection")
         room.sockets[role] = ws
         log.info("Room %s player %s WebSocket authenticated", code, role + 1)
-        queue = asyncio.Queue(maxsize=12)
+        queue = asyncio.Queue(maxsize=MEDIA_QUEUE_LIMIT)
         room.media_queues[role] = queue
         room.media_tasks[role] = asyncio.create_task(room.pump_media(role, ws, queue))
         room.last_activity = time.monotonic()
