@@ -113,3 +113,25 @@ curl -i http://127.0.0.1:8107/healthz
 ```
 
 Ha a `local-roms/game.d64` könyvtár (korábbi rövid Docker-volume szintaxis automatikusan létrehozhatta), **csak akkor** töröld `rmdir local-roms/game.d64` paranccsal, ha üres. Ez nem töröl valódi lemezképet. Másold oda a saját `.d64` fájlodat, majd `docker compose up -d --force-recreate`. Az új Compose konfiguráció `create_host_path: false` beállítással már nem hoz létre látszólagos fájlt hiányzó csatoláskor.
+
+## C64 billentyűzet / RUN-STOP (2026-10)
+
+A képernyő feletti **RUN/STOP** gyorsgomb mindig elérhető. A **⌨ Billentyűzet** gombbal megjeleníthető egy érintésérzékeny C64-kiosztás, majd ugyanitt elrejthető. A panel alapállapotban rejtve van; mobilon az érintőgombok, PC-n a fizikai billentyűzet is használható. A joystick ettől függetlenül változatlanul működik.
+
+- C64 `RUN/STOP` = PC `Esc` (Libretro `RETROK_ESCAPE=27`).
+- C64 `RETURN` = `Enter`, `DEL` = `Backspace`, `RESTORE` = `PageUp`.
+- A teljesebb panel betűket, számokat, Shift/C=/Ctrl billentyűket, kurzornyilakat és F1/F3/F5/F7-et tartalmaz.
+- **Ha a panel csukva van**, a PC nyilak és a Space továbbra is a játékos joystickját kezelik. **Ha nyitva van**, a PC billentyűzet a C64 billentyűzetét vezérli (a képernyős joystick ekkor is aktív).
+- A billentyűlenyomás és -felengedés a WebSocketen külön esemény. A worker legalább két emulált képkockáig nyomva tartja a nagyon rövid érintéseket is. Kilépés, kapcsolatvesztés és fókuszvesztés során automatikus felengedés történik.
+- Két játékos esetén mindkét résztvevő ugyanazt a virtuális C64-billentyűzetet használja; az azonos gombot párhuzamosan lenyomó játékosok nem tudják egymás gombját idő előtt felengedni.
+
+A módosítás **nem** települ automatikusan a futó NUC-ra. Helyi frissítés (az eredeti lemezkép megtartásával):
+
+```bash
+cd ~/codes/wizard-of-wor
+git pull --ff-only
+bash scripts/update.sh --dry-run
+bash scripts/update.sh --apply
+```
+
+Végül töltsd újra a `https://pmqxyz.hopto.org/wizard-of-wor/` oldalt.
